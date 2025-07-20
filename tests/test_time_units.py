@@ -124,7 +124,7 @@ class TestTimeUnits:
         }
         
         assert VALID_TIME_UNITS == expected_units
-        assert len(Axis.VALID_TIME_UNITS) == 23  # Verify count
+        assert len(VALID_TIME_UNITS) == 23  # Verify count
     
     def test_integration_with_existing_validation(self):
         """Test that time unit validation integrates properly with existing TCZYX validation."""

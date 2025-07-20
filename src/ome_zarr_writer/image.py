@@ -1,13 +1,16 @@
 """Main OME-Zarr writer implementation."""
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 import zarr
 import numpy as np
 from pathlib import Path
 import dask.array as da
 import dask_image.ndfilters
 from skimage.transform import rescale
-from .schema_models import ScaleTransformation, TranslationTransformation, Axis
+from .schema_models import (
+    ScaleTransformation, TranslationTransformation, Axis,
+    Dataset, Multiscale, OMEMetadata, OMEZarrImageMetadata
+)
 
 
 class OmeZarrImage:
@@ -105,26 +108,6 @@ class OmeZarrImage:
                 
         self.downscale_levels = downscale_levels
 
-    def create_multiscale_group(
-        self,
-        arrays: List[np.ndarray],
-        axes: List[Dict[str, Any]],
-        coordinate_transformations: Optional[List[List[Union[ScaleTransformation, TranslationTransformation]]]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> zarr.Group:
-        """Create a multiscale OME-Zarr group.
-
-        Args:
-            arrays: List of arrays representing different resolution levels
-            axes: List of axis metadata
-            coordinate_transformations: Optional coordinate transformations for each level
-            metadata: Optional additional metadata
-
-        Returns:
-            The created zarr group
-        """
-        # Implementation will go here
-        raise NotImplementedError("This method will be implemented")
     
     def _create_downscaled_arrays(self) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.
@@ -351,20 +334,83 @@ class OmeZarrImage:
     
 
 
-    def write(
-        self,
-        image: np.ndarray,
-        pixel_size: Tuple[float, ...],
-        units: Optional[List[str]] = None,
-        channel_names: Optional[List[str]] = None,
-    ) -> None:
-        """Write an image as OME-Zarr.
-
-        Args:
-            image: The image array to write
-            pixel_size: Physical pixel sizes for each spatial dimension
-            units: Units for each spatial dimension
-            channel_names: Names for each channel (if applicable)
+    def write(self) -> None:
+        """Write the image as OME-Zarr.
+        
+        Creates a complete OME-Zarr file with:
+        - Multiscale pyramid datasets
+        - Proper OME-Zarr 0.5 metadata
+        - Coordinate transformations for each level
+        - Zarr arrays for each resolution level
         """
-        # Implementation will go here
-        raise NotImplementedError("This method will be implemented")
+        import shutil
+        
+        # Remove existing file if overwrite is True
+        if self.overwrite and self.path.exists():
+            if self.path.is_dir():
+                shutil.rmtree(self.path)
+            else:
+                self.path.unlink()
+        
+        # Create the root zarr group
+        root_group = zarr.create_group(str(self.path), overwrite=self.overwrite, zarr_format=3)
+        
+        # Generate downscaled arrays
+        arrays = self._create_downscaled_arrays()
+        
+        # Generate coordinate transformations for each level
+        level_transformations = self._create_coordinate_transformations_for_levels()
+        
+        # Create datasets for each resolution level
+        datasets = []
+        for level, array in enumerate(arrays):
+            # Convert dask array to numpy for zarr storage
+            array_data: np.ndarray = np.asarray(array.compute() if hasattr(array, 'compute') else array)
+            
+            # Create zarr array for this level and store the data
+            zarr_array = root_group.create_array(str(level), shape=array_data.shape, dtype=array_data.dtype)
+            zarr_array[:] = array_data
+            
+            # Get coordinate transformations for this level
+            if level_transformations and level < len(level_transformations):
+                transformations = level_transformations[level]
+            else:
+                # Create default scale transformation if none provided
+                default_transformations: List[Union[ScaleTransformation, TranslationTransformation]] = [
+                    ScaleTransformation(scale=[1.0] * len(self.dims))
+                ]
+                transformations = default_transformations
+            
+            # Create dataset metadata
+            dataset = Dataset(
+                path=str(level),
+                coordinateTransformations=transformations
+            )
+            datasets.append(dataset)
+        
+        # Create multiscale metadata
+        multiscale = Multiscale(
+            datasets=datasets,
+            axes=self.axes,
+            name=self.path.stem  # Use filename as name
+        )
+        
+        # Create OME metadata
+        ome_metadata = OMEMetadata(
+            multiscales=[multiscale],
+            version="0.5"
+        )
+        
+        # Create final metadata container
+        metadata = OMEZarrImageMetadata(ome=ome_metadata)
+        
+        # Write metadata to zarr attributes
+        root_group.attrs.update(metadata.to_dict())
+        
+        print(f"✅ Successfully wrote OME-Zarr to: {self.path}")
+        print(f"   - {len(arrays)} resolution levels")
+        print(f"   - Shape: {self.image.shape}")
+        print(f"   - Dimensions: {self.dims}")
+        print(f"   - Axes: {[(ax.name, ax.type, ax.unit) for ax in self.axes]}")
+
+        zarr.consolidate_metadata(str(self.path))

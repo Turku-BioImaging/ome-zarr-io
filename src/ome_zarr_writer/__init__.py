@@ -4,7 +4,7 @@ __version__ = "0.1.0"
 __author__ = "Junel Solis, Turku BioImaging"
 __email__ = "junel.solis@abo.fi"
 
-from .writer import OMEZarrWriter
+from .image import OMEZarrImage
 from .validator import OMEZarrValidator
 
-__all__ = ["OMEZarrWriter", "OMEZarrValidator"]
+__all__ = ["OMEZarrImage", "OMEZarrValidator"]

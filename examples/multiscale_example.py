@@ -37,8 +37,9 @@ def main():
     # Create dimension names list
     dims = ["c", "z", "y", "x"]
     
-    # Test different downscale levels
+    # Test different downscale levels and factor
     downscale_levels = 4
+    downscale_factor = 2  # Can be 2, 3, 4, etc. - higher values create more aggressive downscaling
     
     try:
         # Initialize OME-Zarr image with downscaling
@@ -47,12 +48,14 @@ def main():
             image=image,
             dims=dims,
             downscale_levels=downscale_levels,
+            downscale_factor=downscale_factor,
             overwrite=True
         )
         
         print(f"\nSuccessfully initialized OME-Zarr image: {output_path}")
         print(f"Dimensions: {dims}")
         print(f"Downscale levels: {downscale_levels}")
+        print(f"Downscale factor: {downscale_factor}")
         
         # Create and display the downscaled arrays
         print("\nCreating multiscale pyramid...")
@@ -60,8 +63,8 @@ def main():
         
         print(f"Number of resolution levels: {len(downscaled_arrays)}")
         for i, arr in enumerate(downscaled_arrays):
-            scale_factor = 2 ** i
-            print(f"  Level {i}: {arr.shape} (scale factor: {scale_factor}x)")
+            scale_factor_actual = downscale_factor ** i
+            print(f"  Level {i}: {arr.shape} (scale factor: {scale_factor_actual}x)")
         
         print("\n✅ Multiscale pyramid created successfully!")
         print("Note: Only Y and X dimensions are downscaled, preserving C and Z dimensions.")

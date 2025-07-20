@@ -24,6 +24,7 @@ class OmeZarrImage:
         dims: List[str],
         coordinate_transformations: Optional[List[Dict[str, Any]]] = None,
         downscale_levels: Optional[int] = None,
+        downscale_factor: int = 2,
         overwrite: bool = False,
     ):
         """Initialize the OME-Zarr writer.
@@ -34,8 +35,11 @@ class OmeZarrImage:
             dims: List of dimension names (e.g., ["t", "c", "z", "y", "x"]).
             coordinate_transformations: Optional list of coordinate transformation dicts.
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
+            downscale_factor: Factor by which to downscale each level (default: 2).
             overwrite: Whether to overwrite existing files.
         """
+        import warnings
+        
         self.path = Path(path)
         # Convert numpy array to dask array if necessary
         if isinstance(image, np.ndarray):
@@ -44,8 +48,53 @@ class OmeZarrImage:
             self.image = image
         self.dims = dims
         self.coordinate_transformations = coordinate_transformations
-        self.downscale_levels = downscale_levels
+        self.downscale_factor = downscale_factor
         self.overwrite = overwrite
+        
+        # Validate downscale_factor
+        if downscale_factor < 2:
+            raise ValueError(f"downscale_factor must be >= 2, got {downscale_factor}")
+        
+        # Validate downscale_levels against image dimensions
+        if downscale_levels is not None and downscale_levels > 0:
+            # Get the size of the smallest spatial dimension (Y and X are last two)
+            min_spatial_dim = min(self.image.shape[-2], self.image.shape[-1])
+            
+            # Calculate maximum possible levels
+            max_levels = 0
+            test_size = min_spatial_dim
+            while test_size >= downscale_factor:
+                test_size = test_size // downscale_factor
+                max_levels += 1
+            
+            if downscale_levels > max_levels:
+                suggested_levels = max_levels
+                suggested_factor = downscale_factor
+                
+                # Try to find a smaller factor that would work
+                for factor in range(2, downscale_factor):
+                    test_levels = 0
+                    test_size = min_spatial_dim
+                    while test_size >= factor:
+                        test_size = test_size // factor
+                        test_levels += 1
+                    if test_levels >= downscale_levels:
+                        suggested_factor = factor
+                        break
+                
+                warning_msg = (
+                    f"Requested {downscale_levels} downscale levels with factor {downscale_factor} "
+                    f"is too many for image with spatial dimensions {self.image.shape[-2:]}. "
+                    f"Maximum possible levels: {max_levels}. "
+                    f"Suggestions: reduce downscale_levels to {suggested_levels} "
+                    f"or reduce downscale_factor to {suggested_factor}."
+                )
+                warnings.warn(warning_msg, UserWarning)
+                
+                # Automatically adjust to maximum possible levels
+                downscale_levels = max_levels
+                
+        self.downscale_levels = downscale_levels
 
     def create_multiscale_group(
         self,
@@ -72,9 +121,9 @@ class OmeZarrImage:
         """Create downscaled arrays for multiscale representation.
 
         Creates a list of dask arrays where each subsequent array is downscaled
-        by a factor of 2 in the last two dimensions (Y and X axes), while preserving
-        all other dimensions (time, channel, Z). Uses Gaussian filtering before
-        downscaling to prevent aliasing artifacts.
+        by the specified downscale_factor in the last two dimensions (Y and X axes), 
+        while preserving all other dimensions (time, channel, Z). Uses Gaussian 
+        filtering before downscaling to prevent aliasing artifacts.
 
         Returns:
             List of downscaled dask arrays. The first array is the original image,
@@ -88,15 +137,17 @@ class OmeZarrImage:
         
         for level in range(1, self.downscale_levels + 1):
             # Check if Y or X dimensions are too small to downscale further
-            if current_array.shape[-2] < 2 or current_array.shape[-1] < 2:
+            if (current_array.shape[-2] < self.downscale_factor or 
+                current_array.shape[-1] < self.downscale_factor):
                 # Stop creating more levels if dimensions become too small
                 break
             
             # Apply Gaussian filter to prevent aliasing
-            # Only apply to the last two dimensions (Y and X)
+            # Sigma is proportional to the downscale factor
+            # For factor=2, sigma=0.5; for factor=4, sigma=1.0, etc.
             sigma = [0.0] * current_array.ndim
-            sigma[-2] = 0.5  # Y dimension - sigma for anti-aliasing before 2x downscale
-            sigma[-1] = 0.5  # X dimension - sigma for anti-aliasing before 2x downscale
+            sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
+            sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension
             
             filtered_array = dask_image.ndfilters.gaussian_filter(
                 current_array, 
@@ -105,12 +156,14 @@ class OmeZarrImage:
             )
             
             # Create a rescaling function that only operates on Y and X dimensions
+            downscale_factor = self.downscale_factor  # Capture for closure
             def rescale_yx_block(block, block_id=None):
-                """Rescale only the last two dimensions of a block by factor of 0.5."""
+                """Rescale only the last two dimensions of a block by the downscale factor."""
                 # Create scale factors: 1 for all dimensions except last two
                 scale_factors = [1.0] * block.ndim
-                scale_factors[-2] = 0.5  # Y dimension (scale down by factor of 2)
-                scale_factors[-1] = 0.5  # X dimension (scale down by factor of 2)
+                scale_factor = 1.0 / downscale_factor
+                scale_factors[-2] = scale_factor  # Y dimension
+                scale_factors[-1] = scale_factor  # X dimension
                 
                 return rescale(
                     block,
@@ -122,13 +175,13 @@ class OmeZarrImage:
             
             # Calculate the expected output shape
             new_shape = list(current_array.shape)
-            new_shape[-2] = new_shape[-2] // 2  # Y dimension halved
-            new_shape[-1] = new_shape[-1] // 2  # X dimension halved
+            new_shape[-2] = new_shape[-2] // self.downscale_factor  # Y dimension
+            new_shape[-1] = new_shape[-1] // self.downscale_factor  # X dimension
             
-            # Calculate new chunk sizes (also halved for Y and X dimensions)
+            # Calculate new chunk sizes (also downscaled for Y and X dimensions)
             new_chunks = list(filtered_array.chunks)
-            new_chunks[-2] = tuple(chunk_size // 2 for chunk_size in new_chunks[-2])
-            new_chunks[-1] = tuple(chunk_size // 2 for chunk_size in new_chunks[-1])
+            new_chunks[-2] = tuple(chunk_size // self.downscale_factor for chunk_size in new_chunks[-2])
+            new_chunks[-1] = tuple(chunk_size // self.downscale_factor for chunk_size in new_chunks[-1])
             
             try:
                 current_array = da.map_blocks(

@@ -1,5 +1,5 @@
 """
-Tests for the OMEZarrImage writer class.
+Tests for the OmeZarrImage writer class.
 """
 
 import pytest
@@ -7,7 +7,7 @@ import numpy as np
 import dask.array as da
 from pathlib import Path
 import tempfile
-from ome_zarr_writer.image import OMEZarrImage
+from ome_zarr_writer.image import OmeZarrImage
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def test_init_with_numpy_array(temp_dir, sample_2d_image):
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims
@@ -56,7 +56,7 @@ def test_init_with_dask_array(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     dask_image = da.from_array(sample_2d_image, chunks="auto")
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=dask_image,
         dims=dims
@@ -74,7 +74,7 @@ def test_init_with_coordinate_transformations(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     coord_transforms = [{"type": "scale", "scale": [0.1, 0.1]}]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -90,7 +90,7 @@ def test_init_with_downscale_levels(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     downscale_levels = 3
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -105,7 +105,7 @@ def test_init_with_overwrite_flag(temp_dir, sample_2d_image):
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -120,7 +120,7 @@ def test_path_handling_string_input(sample_2d_image):
     path_str = "/tmp/test.zarr"
     dims = ["y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path_str,
         image=sample_2d_image,
         dims=dims
@@ -135,7 +135,7 @@ def test_create_multiscale_group_not_implemented(temp_dir, sample_2d_image):
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims
@@ -153,7 +153,7 @@ def test_create_downscaled_arrays_basic_functionality(temp_dir, sample_2d_image)
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -176,7 +176,7 @@ def test_create_downscaled_arrays_no_downscaling(temp_dir, sample_2d_image):
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -195,7 +195,7 @@ def test_write_not_implemented(temp_dir, sample_2d_image):
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims
@@ -214,7 +214,7 @@ def test_3d_image_initialization(temp_dir, sample_3d_image):
     path = temp_dir / "test.zarr"
     dims = ["z", "y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=sample_3d_image,
         dims=dims
@@ -230,7 +230,7 @@ def test_multichannel_image_dims(temp_dir):
     path = temp_dir / "test.zarr"
     dims = ["c", "y", "x"]
     
-    writer = OMEZarrImage(
+    writer = OmeZarrImage(
         path=path,
         image=multichannel_image,
         dims=dims

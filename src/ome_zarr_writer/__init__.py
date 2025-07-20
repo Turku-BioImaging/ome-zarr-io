@@ -4,7 +4,7 @@ __version__ = "0.1.0"
 __author__ = "Junel Solis, Turku BioImaging"
 __email__ = "junel.solis@abo.fi"
 
-from .image import OMEZarrImage
+from .image import OmeZarrImage
 from .validator import OMEZarrValidator
 from .schema_models import (
     OMEZarrImageMetadata,
@@ -25,7 +25,7 @@ from .schema_models import (
 )
 
 __all__ = [
-    "OMEZarrImage", 
+    "OmeZarrImage", 
     "OMEZarrValidator",
     "OMEZarrImageMetadata",
     "OMEMetadata", 

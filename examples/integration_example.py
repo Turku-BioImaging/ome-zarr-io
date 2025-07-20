@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Example showing integration of schema dataclasses with OMEZarrImage.
+Example showing integration of schema dataclasses with OmeZarrImage.
 
 This example demonstrates how the schema dataclasses can be used alongside
-the existing OMEZarrImage functionality to create well-structured metadata.
+the existing OmeZarrImage functionality to create well-structured metadata.
 """
 
 import numpy as np
@@ -108,8 +108,8 @@ def example_2d_integration():
     print("Generated metadata:")
     print(json.dumps(attrs, indent=2))
     
-    # Note: This would be used with OMEZarrImage like:
-    # writer = OMEZarrImage("/path/to/output.zarr", image, dims)
+    # Note: This would be used with OmeZarrImage like:
+    # writer = OmeZarrImage("/path/to/output.zarr", image, dims)
     # The metadata.to_dict() could be passed to zarr group attrs
     
     return metadata
@@ -221,4 +221,4 @@ if __name__ == "__main__":
     print("- Generate valid OME-Zarr metadata programmatically")
     print("- Ensure schema compliance through validation")
     print("- Provide type hints and IDE support")
-    print("- Integrate with existing OMEZarrImage functionality")
+    print("- Integrate with existing OmeZarrImage functionality")

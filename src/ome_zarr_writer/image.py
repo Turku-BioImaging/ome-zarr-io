@@ -9,7 +9,7 @@ import dask_image.ndfilters
 from skimage.transform import rescale
 
 
-class OMEZarrImage:
+class OmeZarrImage:
     """Class for writing valid OME-Zarr 0.5 multiscale images.
 
     Provides functionality to write image data in the OME-Zarr format,

@@ -10,7 +10,7 @@ This example demonstrates how to:
 
 import numpy as np
 from pathlib import Path
-from ome_zarr_writer import OMEZarrImage, create_axes
+from ome_zarr_writer import OmeZarrImage, create_axes
 
 
 def main():
@@ -42,7 +42,7 @@ def main():
     
     try:
         # Initialize OME-Zarr image
-        ome_zarr_image = OMEZarrImage(
+        ome_zarr_image = OmeZarrImage(
             path=output_path,
             image=image,
             dims=dims,

@@ -48,21 +48,31 @@ class Omero:
     channels: List[Channel]
 
 
+# Valid units for space axes according to OME-Zarr specification
+VALID_SPACE_UNITS = {
+    "angstrom", "attometer", "centimeter", "decimeter", "exameter", 
+    "femtometer", "foot", "gigameter", "hectometer", "inch", "kilometer", 
+    "megameter", "meter", "micrometer", "mile", "millimeter", "nanometer", 
+    "parsec", "petameter", "picometer", "terameter", "yard", "yoctometer", 
+    "yottameter", "zeptometer", "zettameter"
+}
+
+# Valid units for time axes according to OME-Zarr specification
+VALID_TIME_UNITS = {
+    "attosecond", "centisecond", "day", "decisecond", "exasecond", 
+    "femtosecond", "gigasecond", "hectosecond", "hour", "kilosecond", 
+    "megasecond", "microsecond", "millisecond", "minute", "nanosecond", 
+    "petasecond", "picosecond", "second", "terasecond", "yoctosecond", 
+    "yottasecond", "zeptosecond", "zettasecond"
+}
+
+
 @dataclass
 class Axis:
     """Axis definition with name and type."""
     name: str
     type: Optional[str] = None
     unit: Optional[str] = None
-
-    # Valid units for space axes according to OME-Zarr specification
-    VALID_SPACE_UNITS = {
-        "angstrom", "attometer", "centimeter", "decimeter", "exameter", 
-        "femtometer", "foot", "gigameter", "hectometer", "inch", "kilometer", 
-        "megameter", "meter", "micrometer", "mile", "millimeter", "nanometer", 
-        "parsec", "petameter", "picometer", "terameter", "yard", "yoctometer", 
-        "yottameter", "zeptometer", "zettameter"
-    }
 
     def __post_init__(self):
         """Validate axis type and unit."""
@@ -74,10 +84,18 @@ class Axis:
             
             # For space axes, validate unit if provided
             if self.type == "space" and self.unit is not None:
-                if self.unit not in self.VALID_SPACE_UNITS:
+                if self.unit not in VALID_SPACE_UNITS:
                     raise ValueError(
                         f"Invalid unit '{self.unit}' for space axis. "
-                        f"Valid units are: {', '.join(sorted(self.VALID_SPACE_UNITS))}"
+                        f"Valid units are: {', '.join(sorted(VALID_SPACE_UNITS))}"
+                    )
+            
+            # For time axes, validate unit if provided
+            if self.type == "time" and self.unit is not None:
+                if self.unit not in VALID_TIME_UNITS:
+                    raise ValueError(
+                        f"Invalid unit '{self.unit}' for time axis. "
+                        f"Valid units are: {', '.join(sorted(VALID_TIME_UNITS))}"
                     )
 
 
@@ -396,164 +414,134 @@ class OMEZarrImageMetadata:
 # Input images always follow TCZYX dimension order where T, C, Z are optional
 # Minimum dimensions: YX, Maximum dimensions: TCZYX
 
-def create_yx_axes(pixel_size_x: float, pixel_size_y: float, 
-                   unit: str = "micrometer") -> List[Axis]:
-    """Create 2D spatial axes (Y, X order) - minimum required dimensions.
+def create_axes(
+    axes: str,
+    x_size: float,
+    y_size: float,
+    z_size: Optional[float] = None,
+    unit: str = "micrometer",
+    time_unit: Optional[str] = None
+) -> List[Axis]:
+    """Create axes for images following TCZYX dimension ordering.
     
     Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
+        axes: String specifying which axes to include. Must follow TCZYX ordering.
+              Valid combinations: "yx", "zyx", "cyx", "czyx", "tyx", "tzyx", "tcyx", "tczyx"
+        x_size: Pixel size in X dimension (for documentation, not used in axis creation)
+        y_size: Pixel size in Y dimension (for documentation, not used in axis creation)
+        z_size: Pixel size in Z dimension (for documentation, required if 'z' in axes)
+        unit: Unit for spatial dimensions (X, Y, Z)
+        time_unit: Unit for time dimension (T), if present. Valid units include:
+                  second, millisecond, microsecond, nanosecond, minute, hour, day, etc.
         
     Returns:
-        List of 2D spatial axes in Y, X order
+        List of Axis objects in TCZYX order
+        
+    Raises:
+        ValueError: If axes string is invalid or z_size not provided when needed
+        
+    Examples:
+        >>> # 2D spatial image
+        >>> axes = create_axes("yx", 0.1, 0.1)
+        
+        >>> # Multichannel 3D image  
+        >>> axes = create_axes("czyx", 0.1, 0.1, 0.3)
+        
+        >>> # Time-series multichannel 2D with time unit
+        >>> axes = create_axes("tcyx", 0.2, 0.2, time_unit="second")
+        
+        >>> # Full 5D image with custom units
+        >>> axes = create_axes("tczyx", 0.25, 0.25, 0.5, unit="nanometer", time_unit="millisecond")
     """
-    return [
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    # Normalize axes string
+    axes = axes.lower().strip()
+    
+    # Valid axis combinations following TCZYX ordering
+    valid_combinations = {
+        "yx", "zyx", "cyx", "czyx", 
+        "tyx", "tzyx", "tcyx", "tczyx"
+    }
+    
+    if axes not in valid_combinations:
+        raise ValueError(
+            f"Invalid axes '{axes}'. Must be one of: {', '.join(sorted(valid_combinations))}. "
+            f"Axes must follow TCZYX ordering where T, C, Z are optional."
+        )
+    
+    # Check if z_size is required
+    if 'z' in axes and z_size is None:
+        raise ValueError(f"z_size is required when 'z' is in axes '{axes}'")
+    
+    # Build axis list in TCZYX order
+    axis_list = []
+    
+    # Add dimensions in TCZYX order
+    if 't' in axes:
+        axis_list.append(Axis(name="t", type="time", unit=time_unit))
+    
+    if 'c' in axes:
+        axis_list.append(Axis(name="c", type="channel"))
+    
+    if 'z' in axes:
+        axis_list.append(Axis(name="z", type="space", unit=unit))
+    
+    # Y and X are always last and required
+    axis_list.append(Axis(name="y", type="space", unit=unit))
+    axis_list.append(Axis(name="x", type="space", unit=unit))
+    
+    # Validate the created axes follow TCZYX ordering
+    validate_tczyx_axis_ordering(axis_list)
+    
+    return axis_list
+
+
+# Convenience functions for backward compatibility
+def create_yx_axes(pixel_size_x: float, pixel_size_y: float, 
+                   unit: str = "micrometer") -> List[Axis]:
+    """Create 2D spatial axes (Y, X order) - minimum required dimensions."""
+    return create_axes("yx", pixel_size_x, pixel_size_y, unit=unit)
 
 
 def create_zyx_axes(pixel_size_x: float, pixel_size_y: float, pixel_size_z: float,
                     unit: str = "micrometer") -> List[Axis]:
-    """Create 3D spatial axes (Z, Y, X order) from TCZYX dimension order.
-    
-    Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        pixel_size_z: Physical size per pixel in Z dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
-        
-    Returns:
-        List of 3D spatial axes in Z, Y, X order
-    """
-    return [
-        Axis(name="z", type="space", unit=unit),
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    """Create 3D spatial axes (Z, Y, X order) from TCZYX dimension order."""
+    return create_axes("zyx", pixel_size_x, pixel_size_y, pixel_size_z, unit=unit)
 
 
 def create_cyx_axes(pixel_size_x: float, pixel_size_y: float,
                     unit: str = "micrometer") -> List[Axis]:
-    """Create axes for multichannel 2D images (C, Y, X) from TCZYX dimension order.
-    
-    Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
-        
-    Returns:
-        List of axes in C, Y, X order
-    """
-    return [
-        Axis(name="c", type="channel"),
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    """Create axes for multichannel 2D images (C, Y, X) from TCZYX dimension order."""
+    return create_axes("cyx", pixel_size_x, pixel_size_y, unit=unit)
 
 
 def create_czyx_axes(pixel_size_x: float, pixel_size_y: float, pixel_size_z: float,
                      unit: str = "micrometer") -> List[Axis]:
-    """Create axes for multichannel 3D images (C, Z, Y, X) from TCZYX dimension order.
-    
-    Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        pixel_size_z: Physical size per pixel in Z dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
-        
-    Returns:
-        List of axes in C, Z, Y, X order
-    """
-    return [
-        Axis(name="c", type="channel"),
-        Axis(name="z", type="space", unit=unit),
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    """Create axes for multichannel 3D images (C, Z, Y, X) from TCZYX dimension order."""
+    return create_axes("czyx", pixel_size_x, pixel_size_y, pixel_size_z, unit=unit)
 
 
 def create_tyx_axes(pixel_size_x: float, pixel_size_y: float,
                     unit: str = "micrometer") -> List[Axis]:
-    """Create axes for time-series 2D images (T, Y, X) from TCZYX dimension order.
-    
-    Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
-        
-    Returns:
-        List of axes in T, Y, X order
-    """
-    return [
-        Axis(name="t", type="time"),
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    """Create axes for time-series 2D images (T, Y, X) from TCZYX dimension order."""
+    return create_axes("tyx", pixel_size_x, pixel_size_y, unit=unit)
 
 
 def create_tzyx_axes(pixel_size_x: float, pixel_size_y: float, pixel_size_z: float,
                      unit: str = "micrometer") -> List[Axis]:
-    """Create axes for time-series 3D images (T, Z, Y, X) from TCZYX dimension order.
-    
-    Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        pixel_size_z: Physical size per pixel in Z dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
-        
-    Returns:
-        List of axes in T, Z, Y, X order
-    """
-    return [
-        Axis(name="t", type="time"),
-        Axis(name="z", type="space", unit=unit),
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    """Create axes for time-series 3D images (T, Z, Y, X) from TCZYX dimension order."""
+    return create_axes("tzyx", pixel_size_x, pixel_size_y, pixel_size_z, unit=unit)
 
 
 def create_tcyx_axes(pixel_size_x: float, pixel_size_y: float,
                      unit: str = "micrometer") -> List[Axis]:
-    """Create axes for time-series multichannel 2D images (T, C, Y, X) from TCZYX dimension order.
-    
-    Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
-        
-    Returns:
-        List of axes in T, C, Y, X order
-    """
-    return [
-        Axis(name="t", type="time"),
-        Axis(name="c", type="channel"),
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    """Create axes for time-series multichannel 2D images (T, C, Y, X) from TCZYX dimension order."""
+    return create_axes("tcyx", pixel_size_x, pixel_size_y, unit=unit)
 
 
 def create_tczyx_axes(pixel_size_x: float, pixel_size_y: float, pixel_size_z: float,
                       unit: str = "micrometer") -> List[Axis]:
-    """Create axes for time-series multichannel 3D images (T, C, Z, Y, X) - maximum dimensions from TCZYX order.
-    
-    Args:
-        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
-        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
-        pixel_size_z: Physical size per pixel in Z dimension (not used in axes, only for documentation)
-        unit: Physical unit for spatial dimensions
-        
-    Returns:
-        List of axes in T, C, Z, Y, X order
-    """
-    return [
-        Axis(name="t", type="time"),
-        Axis(name="c", type="channel"),
-        Axis(name="z", type="space", unit=unit),
-        Axis(name="y", type="space", unit=unit),
-        Axis(name="x", type="space", unit=unit)
-    ]
+    """Create axes for time-series multichannel 3D images (T, C, Z, Y, X) - maximum dimensions from TCZYX order."""
+    return create_axes("tczyx", pixel_size_x, pixel_size_y, pixel_size_z, unit=unit)
 
 
 def create_scale_transformation(scales: List[float]) -> ScaleTransformation:

@@ -100,6 +100,7 @@ attrs = metadata.to_dict()
 
 ```python
 from ome_zarr_writer.schema_models import (
+    create_axes,       # NEW: Single unified function!
     create_yx_axes,    # YX: 2D spatial
     create_zyx_axes,   # ZYX: 3D spatial  
     create_cyx_axes,   # CYX: Multichannel 2D
@@ -110,6 +111,11 @@ from ome_zarr_writer.schema_models import (
     create_tczyx_axes, # TCZYX: Time-series multichannel 3D (maximum)
     create_scale_transformation
 )
+
+# NEW UNIFIED API - Single function for all dimension combinations:
+axes = create_axes("czyx", 0.1, 0.1, 0.3, unit="micrometer")  # Multichannel 3D
+axes = create_axes("tcyx", 0.2, 0.2, unit="micrometer")       # Time-series multichannel 2D
+axes = create_axes("tczyx", 0.25, 0.25, 0.5, unit="micrometer") # Full 5D
 
 # Example: Create CZYX (multichannel 3D) metadata
 # Input image shape: (3, 20, 256, 256) = (Channel, Z, Y, X)
@@ -162,10 +168,10 @@ valid_units = [
 ### Validation
 
 ```python
-from ome_zarr_writer.schema_models import validate_tczyx_axis_ordering
+from ome_zarr_writer.schema_models import validate_tczyx_axis_ordering, create_axes
 
-# Automatic validation in all convenience functions
-axes = create_tczyx_axes(0.1, 0.1, 0.3, unit="micrometer")  # ✓ Valid
+# Automatic validation in unified function
+axes = create_axes("tczyx", 0.1, 0.1, 0.3, unit="micrometer")  # ✓ Valid
 
 # Manual validation
 validate_tczyx_axis_ordering(axes)  # Raises ValueError if invalid
@@ -174,8 +180,9 @@ validate_tczyx_axis_ordering(axes)  # Raises ValueError if invalid
 ### Complete Example
 
 ```python
-# Run the comprehensive TCZYX example:
-python examples/tczyx_ordering_example.py
+# Run the comprehensive examples:
+python examples/unified_create_axes_example.py  # NEW: Unified API demonstration
+python examples/tczyx_ordering_example.py       # Complete TCZYX examples
 ```
 
 ### Validation
@@ -195,6 +202,7 @@ errors = validator.get_validation_errors(attrs, "image")
 
 See the `examples/` directory for comprehensive usage examples:
 
+- `examples/unified_create_axes_example.py` - **NEW**: Single function API demonstration  
 - `examples/tczyx_ordering_example.py` - Complete TCZYX dimension ordering demonstration
 - `examples/schema_example.py` - Complete schema dataclass examples  
 - `examples/cyx_example.py` - Multichannel image examples (CYX, CZYX, TYX, TCYX)

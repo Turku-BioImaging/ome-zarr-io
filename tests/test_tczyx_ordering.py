@@ -6,6 +6,7 @@ import pytest
 from ome_zarr_writer.schema_models import (
     Axis,
     validate_tczyx_axis_ordering,
+    create_axes,  # New unified function
     create_yx_axes,
     create_zyx_axes,
     create_cyx_axes,

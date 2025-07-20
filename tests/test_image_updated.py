@@ -137,26 +137,6 @@ def test_path_handling_string_input(sample_2d_image):
     assert str(writer.path) == path_str
 
 
-def test_create_multiscale_group_not_implemented(temp_dir, sample_2d_image):
-    """Test that create_multiscale_group raises NotImplementedError."""
-    path = temp_dir / "test.zarr"
-    dims = ["y", "x"]
-    axis_units = {"unit": "micrometer"}
-
-    writer = OmeZarrImage(
-        path=path,
-        image=sample_2d_image,
-        dims=dims,
-        axis_units=axis_units
-    )
-    
-    with pytest.raises(NotImplementedError):
-        writer.create_multiscale_group(
-            arrays=[],
-            axes=[]
-        )
-
-
 def test_create_downscaled_arrays_basic_functionality(temp_dir, sample_2d_image):
     """Test that _create_downscaled_arrays creates downscaled versions correctly."""
     path = temp_dir / "test.zarr"

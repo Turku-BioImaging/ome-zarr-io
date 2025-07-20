@@ -17,13 +17,16 @@ from .schema_models import (
     Channel,
     Window,
     Omero,
-    create_2d_axes,
-    create_3d_axes,
+    create_yx_axes,
+    create_zyx_axes,
     create_cyx_axes,
     create_czyx_axes,
     create_tyx_axes,
+    create_tzyx_axes,
     create_tcyx_axes,
-    create_scale_transformation
+    create_tczyx_axes,
+    create_scale_transformation,
+    validate_tczyx_axis_ordering
 )
 
 __all__ = [
@@ -39,11 +42,14 @@ __all__ = [
     "Channel",
     "Window",
     "Omero",
-    "create_2d_axes",
-    "create_3d_axes",
+    "create_yx_axes",
+    "create_zyx_axes",
     "create_cyx_axes",
     "create_czyx_axes", 
     "create_tyx_axes",
+    "create_tzyx_axes",
     "create_tcyx_axes",
-    "create_scale_transformation"
+    "create_tczyx_axes",
+    "create_scale_transformation",
+    "validate_tczyx_axis_ordering"
 ]

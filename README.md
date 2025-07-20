@@ -14,7 +14,9 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Type-safe Python dataclasses implementing the OME-Zarr schema
 - JSON Schema validation for metadata compliance
 - Support for various image formats and data types
-- **Multichannel image support** (CYX, CZYX, TYX, TCYX dimensions)
+- **Strict TCZYX dimension ordering** - Input images always follow Time-Channel-Z-Y-X order (T, C, Z optional)
+- **Multichannel image support** (CYX, CZYX, TYX, TCYX, TCZYX dimensions)
+- **Space axis unit validation** (26 supported units: angstrom, micrometer, meter, etc.)
 - Efficient handling of large image datasets
 - Integration with the zarr ecosystem
 - OMERO display settings support
@@ -61,7 +63,7 @@ writer.write(
 )
 ```
 
-### Using Schema Dataclasses
+### Using Schema Dataclasses with TCZYX Ordering
 
 ```python
 from ome_zarr_writer.schema_models import (
@@ -70,40 +72,110 @@ from ome_zarr_writer.schema_models import (
     Multiscale,
     Dataset,
     ScaleTransformation,
-    create_2d_axes,
-    create_cyx_axes  # For multichannel images
+    create_yx_axes,   # 2D spatial
+    create_cyx_axes,  # Multichannel 2D
+    create_tczyx_axes, # Full 5D (Time-Channel-Z-Y-X)
+    validate_tczyx_axis_ordering
 )
 
+# All axis creation functions follow strict TCZYX ordering
+# Valid combinations: YX, ZYX, CYX, CZYX, TYX, TZYX, TCYX, TCZYX
+
 # Create metadata using type-safe dataclasses
-axes = create_2d_axes(0.1, 0.1, unit="micrometer")
+axes = create_yx_axes(0.1, 0.1, unit="micrometer")
 scale_transform = ScaleTransformation(scale=[0.1, 0.1])
 dataset = Dataset(path="0", coordinateTransformations=[scale_transform])
 multiscale = Multiscale(datasets=[dataset], axes=axes, name="My Image")
 ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5")
 metadata = OMEZarrImageMetadata(ome=ome_metadata)
 
+# Validate dimension ordering (automatically done in Multiscale.__post_init__)
+validate_tczyx_axis_ordering(axes)
+
 # Convert to dictionary for zarr attrs
 attrs = metadata.to_dict()
 ```
 
-### Multichannel Images
+### TCZYX Dimension Examples
 
 ```python
 from ome_zarr_writer.schema_models import (
-    create_cyx_axes,    # Channel, Y, X
-    create_czyx_axes,   # Channel, Z, Y, X
-    create_tyx_axes,    # Time, Y, X
-    create_tcyx_axes,   # Time, Channel, Y, X
+    create_yx_axes,    # YX: 2D spatial
+    create_zyx_axes,   # ZYX: 3D spatial  
+    create_cyx_axes,   # CYX: Multichannel 2D
+    create_czyx_axes,  # CZYX: Multichannel 3D
+    create_tyx_axes,   # TYX: Time-series 2D
+    create_tzyx_axes,  # TZYX: Time-series 3D
+    create_tcyx_axes,  # TCYX: Time-series multichannel 2D
+    create_tczyx_axes, # TCZYX: Time-series multichannel 3D (maximum)
     create_scale_transformation
 )
 
-# Create CYX (multichannel) metadata
-axes = create_cyx_axes(0.1, 0.1, unit="micrometer")
-scale_transform = create_scale_transformation([1.0, 0.1, 0.1])  # channel, y, x
-
-# For fluorescence Z-stack
+# Example: Create CZYX (multichannel 3D) metadata
+# Input image shape: (3, 20, 256, 256) = (Channel, Z, Y, X)
 axes = create_czyx_axes(0.1, 0.1, 0.3, unit="micrometer")  # x, y, z pixel sizes
 scale_transform = create_scale_transformation([1.0, 0.3, 0.1, 0.1])  # c, z, y, x
+```
+
+## TCZYX Dimension Ordering
+
+This library enforces **strict TCZYX dimension ordering** for input images:
+
+### Valid Dimension Combinations
+
+All input images must follow the **TCZYX** order where T (time), C (channel), and Z are optional:
+
+| Dimensions | Order | Example Use Case | Input Shape Example |
+|------------|-------|------------------|-------------------|
+| **YX** | Y, X | 2D grayscale image | `(512, 512)` |
+| **ZYX** | Z, Y, X | 3D confocal stack | `(20, 256, 256)` |
+| **CYX** | C, Y, X | RGB/multichannel 2D | `(3, 512, 512)` |
+| **CZYX** | C, Z, Y, X | Multichannel 3D stack | `(2, 15, 256, 256)` |
+| **TYX** | T, Y, X | Time-lapse 2D | `(100, 256, 256)` |
+| **TZYX** | T, Z, Y, X | 4D live imaging | `(50, 10, 128, 128)` |
+| **TCYX** | T, C, Y, X | Time-lapse multichannel | `(50, 2, 128, 128)` |
+| **TCZYX** | T, C, Z, Y, X | 5D live cell imaging | `(20, 3, 8, 64, 64)` |
+
+### Invalid Orderings (Rejected)
+
+```python
+# ❌ These will raise ValueError:
+create_xy_axes(...)      # X, Y - wrong order  
+create_zct_axes(...)     # Z, C, T - wrong order
+create_czdt_axes(...)    # Invalid 'D' dimension
+```
+
+### Space Axis Units
+
+Space axes (X, Y, Z) support 26 validated units:
+
+```python
+valid_units = [
+    "angstrom", "attometer", "centimeter", "decimeter", "exameter", 
+    "femtometer", "foot", "gigameter", "hectometer", "inch", "kilometer", 
+    "megameter", "meter", "micrometer", "millimeter", "nanometer", 
+    "parsec", "petameter", "picometer", "terameter", "yard", "yoctometer", 
+    "yottameter", "zeptometer", "zettameter", "reference_frame"
+]
+```
+
+### Validation
+
+```python
+from ome_zarr_writer.schema_models import validate_tczyx_axis_ordering
+
+# Automatic validation in all convenience functions
+axes = create_tczyx_axes(0.1, 0.1, 0.3, unit="micrometer")  # ✓ Valid
+
+# Manual validation
+validate_tczyx_axis_ordering(axes)  # Raises ValueError if invalid
+```
+
+### Complete Example
+
+```python
+# Run the comprehensive TCZYX example:
+python examples/tczyx_ordering_example.py
 ```
 
 ### Validation
@@ -123,7 +195,8 @@ errors = validator.get_validation_errors(attrs, "image")
 
 See the `examples/` directory for comprehensive usage examples:
 
-- `examples/schema_example.py` - Complete schema dataclass examples
+- `examples/tczyx_ordering_example.py` - Complete TCZYX dimension ordering demonstration
+- `examples/schema_example.py` - Complete schema dataclass examples  
 - `examples/cyx_example.py` - Multichannel image examples (CYX, CZYX, TYX, TCYX)
 - `examples/unit_validation_example.py` - Space axis unit validation demo
 - `examples/integration_example.py` - Integration with existing code

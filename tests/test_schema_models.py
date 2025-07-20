@@ -227,13 +227,15 @@ def test_translation_and_scale():
 def test_axis_uniqueness():
     """Test that axis names must be unique."""
     axes = [
-        Axis(name="x", type="space", unit="micrometer"),
-        Axis(name="x", type="space", unit="micrometer")  # Duplicate name
+        Axis(name="c", type="channel"),  # Duplicate channel
+        Axis(name="c", type="channel"),  # Duplicate channel
+        Axis(name="y", type="space", unit="micrometer"),
+        Axis(name="x", type="space", unit="micrometer")
     ]
     
     dataset = Dataset(
         path="0",
-        coordinateTransformations=[ScaleTransformation(scale=[0.1, 0.1])]
+        coordinateTransformations=[ScaleTransformation(scale=[1.0, 1.0, 0.1, 0.1])]
     )
     
     with pytest.raises(ValueError, match="Axis names must be unique"):

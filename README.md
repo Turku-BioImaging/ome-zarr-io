@@ -11,9 +11,12 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 ## Features
 
 - Write OME-Zarr 0.5 compliant multiscale images
+- Type-safe Python dataclasses implementing the OME-Zarr schema
+- JSON Schema validation for metadata compliance
 - Support for various image formats and data types
 - Efficient handling of large image datasets
 - Integration with the zarr ecosystem
+- OMERO display settings support
 
 ## Installation
 
@@ -33,24 +36,75 @@ pip install -e .
 
 ## Quick Start
 
+### Basic Image Writing
+
 ```python
 import numpy as np
-from ome_zarr_writer import OMEZarrWriter
+from ome_zarr_writer import OMEZarrImage
 
 # Create sample image data
-image = np.random.randint(0, 255, size=(512, 512, 3), dtype=np.uint8)
+image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint8)
 
 # Initialize writer
-writer = OMEZarrWriter("output.zarr")
+writer = OMEZarrImage(
+    path="output.zarr",
+    image=image,
+    dims=["y", "x"]
+)
 
 # Write image with pixel size information
-writer.write_image(
+writer.write(
     image=image,
     pixel_size=(0.5, 0.5),  # micrometers per pixel
-    units=["micrometer", "micrometer"],
-    channel_names=["Red", "Green", "Blue"]
+    units=["micrometer", "micrometer"]
 )
 ```
+
+### Using Schema Dataclasses
+
+```python
+from ome_zarr_writer.schema_models import (
+    OMEZarrImageMetadata,
+    OMEMetadata,
+    Multiscale,
+    Dataset,
+    ScaleTransformation,
+    create_2d_axes
+)
+
+# Create metadata using type-safe dataclasses
+axes = create_2d_axes(0.1, 0.1, unit="micrometer")
+scale_transform = ScaleTransformation(scale=[0.1, 0.1])
+dataset = Dataset(path="0", coordinateTransformations=[scale_transform])
+multiscale = Multiscale(datasets=[dataset], axes=axes, name="My Image")
+ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5")
+metadata = OMEZarrImageMetadata(ome=ome_metadata)
+
+# Convert to dictionary for zarr attrs
+attrs = metadata.to_dict()
+```
+
+### Validation
+
+```python
+from ome_zarr_writer import OMEZarrValidator
+
+# Validate metadata against OME-Zarr schema
+validator = OMEZarrValidator()
+is_valid = validator.validate_image_metadata(attrs)
+
+# Get detailed validation errors
+errors = validator.get_validation_errors(attrs, "image")
+```
+
+## Examples
+
+See the `examples/` directory for comprehensive usage examples:
+
+- `examples/schema_example.py` - Complete schema dataclass examples
+- `examples/integration_example.py` - Integration with existing code
+- `examples/basic_example.py` - Basic writing operations
+- `examples/validation_example.py` - Validation workflows
 
 ## Development
 
@@ -70,21 +124,44 @@ This will:
 
 ### Running tests
 
+Multiple ways to run tests:
+
 ```bash
-pytest tests/
+# Using pytest directly
+pytest
+
+# Using the test script
+./run_tests.sh
+
+# With coverage
+./run_tests.sh cov
+
+# Fast tests only
+./run_tests.sh fast
+
+# All tests + examples
+./run_tests.sh all
+
+# Using make (if available)
+make test
+make test-cov
 ```
 
 ### Code formatting and linting
 
 ```bash
 # Format code
-black src/ tests/
+black src/ tests/ examples/
 
 # Lint code
 flake8 src/ tests/
 
 # Type checking
-mypy src/ome_zarr_writer/
+mypy src/
+
+# Using make
+make format
+make lint
 ```
 
 ## Contributing

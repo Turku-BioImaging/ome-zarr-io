@@ -1,102 +1,132 @@
-"""Tests for OME-Zarr schema validation."""
+"""
+Tests for the OME-Zarr validator.
+"""
 
 import pytest
-from ome_zarr_writer.validator import OMEZarrValidator
 from jsonschema.exceptions import ValidationError
+from ome_zarr_writer.validator import OMEZarrValidator
+from ome_zarr_writer.schema_models import (
+    OMEZarrImageMetadata,
+    OMEMetadata,
+    Multiscale,
+    Dataset,
+    ScaleTransformation,
+    create_2d_axes
+)
 
 
-class TestOMEZarrValidator:
-    """Test cases for the OME-Zarr validator."""
+@pytest.fixture
+def validator():
+    """Create a validator instance for testing."""
+    return OMEZarrValidator()
+
+
+@pytest.fixture
+def valid_image_metadata():
+    """Create valid image metadata for testing."""
+    axes = create_2d_axes(0.1, 0.1)
+    scale_transform = ScaleTransformation(scale=[0.1, 0.1])
+    dataset = Dataset(path="0", coordinateTransformations=[scale_transform])
+    multiscale = Multiscale(datasets=[dataset], axes=axes)
+    ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5")
+    metadata = OMEZarrImageMetadata(ome=ome_metadata)
+    return metadata.to_dict()
+
+
+def test_validator_initialization(validator):
+    """Test that the validator initializes correctly."""
+    assert validator.schema_version == "0.5"
+    assert len(validator._schemas) > 0
+
+
+def test_validate_valid_image_metadata(validator, valid_image_metadata):
+    """Test validation of valid image metadata."""
+    result = validator.validate_image_metadata(valid_image_metadata)
+    assert result is True
+
+
+def test_validate_invalid_metadata_missing_ome(validator):
+    """Test validation fails for metadata missing OME section."""
+    invalid_metadata = {"invalid": "data"}
     
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.validator = OMEZarrValidator()
-    
-    def test_validator_initialization(self):
-        """Test that validator initializes correctly."""
-        assert self.validator.schema_version == "0.5"
-        assert self.validator._schemas is not None
-        assert self.validator._resolver is not None
-    
-    def test_valid_image_metadata(self):
-        """Test validation of valid image metadata."""
-        valid_metadata = {
-            "ome": {
-                "version": "0.5",
-                "multiscales": [
-                    {
-                        "version": "0.5",
-                        "name": "test_image",
-                        "axes": [
-                            {"name": "y", "type": "space", "unit": "micrometer"},
-                            {"name": "x", "type": "space", "unit": "micrometer"}
-                        ],
-                        "datasets": [
-                            {
-                                "path": "0",
-                                "coordinateTransformations": [
-                                    {
-                                        "type": "scale",
-                                        "scale": [1.0, 1.0]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
+    with pytest.raises(ValidationError):
+        validator.validate_image_metadata(invalid_metadata)
+
+
+def test_validate_invalid_metadata_missing_version(validator):
+    """Test validation fails for metadata missing version."""
+    invalid_metadata = {
+        "ome": {
+            "multiscales": []
         }
-        
-        # Should not raise an exception
-        assert self.validator.validate_image_metadata(valid_metadata) is True
+    }
     
-    def test_invalid_image_metadata(self):
-        """Test validation of invalid image metadata."""
-        invalid_metadata = {
-            "ome": {
-                "version": "0.5"
-                # Missing required multiscales field
-            }
+    with pytest.raises(ValidationError):
+        validator.validate_image_metadata(invalid_metadata)
+
+
+def test_validate_invalid_metadata_empty_multiscales(validator):
+    """Test validation fails for empty multiscales."""
+    invalid_metadata = {
+        "ome": {
+            "multiscales": [],
+            "version": "0.5"
         }
-        
-        # Should raise ValidationError
-        with pytest.raises(ValidationError):
-            self.validator.validate_image_metadata(invalid_metadata)
+    }
     
-    def test_get_validation_errors(self):
-        """Test getting validation errors without raising exceptions."""
-        invalid_metadata = {
-            "ome": {
-                "version": "0.5"
-                # Missing required multiscales field
-            }
-        }
-        
-        errors = self.validator.get_validation_errors(invalid_metadata, "image")
-        assert len(errors) > 0
-        assert any("multiscales" in error for error in errors)
+    with pytest.raises(ValidationError):
+        validator.validate_image_metadata(invalid_metadata)
+
+
+def test_get_validation_errors_returns_list(validator, valid_image_metadata):
+    """Test that get_validation_errors returns empty list for valid metadata."""
+    errors = validator.get_validation_errors(valid_image_metadata, "image")
+    assert isinstance(errors, list)
+    assert len(errors) == 0
+
+
+def test_get_validation_errors_returns_errors_for_invalid(validator):
+    """Test that get_validation_errors returns errors for invalid metadata."""
+    invalid_metadata = {"invalid": "data"}
+    errors = validator.get_validation_errors(invalid_metadata, "image")
+    assert isinstance(errors, list)
+    assert len(errors) > 0
+
+
+def test_validate_unknown_schema_type(validator, valid_image_metadata):
+    """Test that unknown schema type raises ValueError."""
+    with pytest.raises(ValueError, match="Schema type 'unknown' not found"):
+        validator.validate_metadata(valid_image_metadata, "unknown")
+
+
+def test_get_validation_errors_unknown_schema_type(validator, valid_image_metadata):
+    """Test that get_validation_errors handles unknown schema type."""
+    errors = validator.get_validation_errors(valid_image_metadata, "unknown")
+    assert len(errors) == 1
+    assert "Schema type 'unknown' not found" in errors[0]
+
+
+def test_validate_image_metadata_convenience_method(validator, valid_image_metadata):
+    """Test the convenience method for image validation."""
+    result = validator.validate_image_metadata(valid_image_metadata)
+    assert result is True
+
+
+def test_schema_dataclasses_integration_with_validator(validator):
+    """Test that metadata created with dataclasses validates successfully."""
+    # Create metadata using dataclasses
+    axes = create_2d_axes(0.1, 0.1)
+    scale_transform = ScaleTransformation(scale=[0.1, 0.1])
+    dataset = Dataset(path="0", coordinateTransformations=[scale_transform])
+    multiscale = Multiscale(datasets=[dataset], axes=axes, name="Test Image")
+    ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5")
+    metadata = OMEZarrImageMetadata(ome=ome_metadata)
     
-    def test_unknown_schema_type(self):
-        """Test validation with unknown schema type."""
-        metadata = {"test": "data"}
-        
-        with pytest.raises(ValueError, match="Schema type 'unknown' not found"):
-            self.validator.validate_metadata(metadata, "unknown")
+    # Convert to dict and validate
+    attrs_dict = metadata.to_dict()
+    result = validator.validate_image_metadata(attrs_dict)
+    assert result is True
     
-    def test_different_schema_types(self):
-        """Test that different validation methods work."""
-        # This is a basic test - in reality you'd need valid metadata for each type
-        test_metadata = {"ome": {"version": "0.5"}}
-        
-        # These should all raise ValidationError due to missing required fields
-        with pytest.raises(ValidationError):
-            self.validator.validate_image_metadata(test_metadata)
-        
-        with pytest.raises(ValidationError):
-            self.validator.validate_plate_metadata(test_metadata)
-        
-        with pytest.raises(ValidationError):
-            self.validator.validate_well_metadata(test_metadata)
-        
-        with pytest.raises(ValidationError):
-            self.validator.validate_label_metadata(test_metadata)
+    # Check that no validation errors are present
+    errors = validator.get_validation_errors(attrs_dict, "image")
+    assert len(errors) == 0

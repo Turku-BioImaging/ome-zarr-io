@@ -6,5 +6,36 @@ __email__ = "junel.solis@abo.fi"
 
 from .image import OMEZarrImage
 from .validator import OMEZarrValidator
+from .schema_models import (
+    OMEZarrImageMetadata,
+    OMEMetadata,
+    Multiscale,
+    Dataset,
+    Axis,
+    ScaleTransformation,
+    TranslationTransformation,
+    Channel,
+    Window,
+    Omero,
+    create_2d_axes,
+    create_3d_axes,
+    create_scale_transformation
+)
 
-__all__ = ["OMEZarrImage", "OMEZarrValidator"]
+__all__ = [
+    "OMEZarrImage", 
+    "OMEZarrValidator",
+    "OMEZarrImageMetadata",
+    "OMEMetadata", 
+    "Multiscale",
+    "Dataset",
+    "Axis",
+    "ScaleTransformation",
+    "TranslationTransformation",
+    "Channel",
+    "Window",
+    "Omero",
+    "create_2d_axes",
+    "create_3d_axes", 
+    "create_scale_transformation"
+]

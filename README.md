@@ -14,6 +14,7 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Type-safe Python dataclasses implementing the OME-Zarr schema
 - JSON Schema validation for metadata compliance
 - Support for various image formats and data types
+- **Multichannel image support** (CYX, CZYX, TYX, TCYX dimensions)
 - Efficient handling of large image datasets
 - Integration with the zarr ecosystem
 - OMERO display settings support
@@ -69,7 +70,8 @@ from ome_zarr_writer.schema_models import (
     Multiscale,
     Dataset,
     ScaleTransformation,
-    create_2d_axes
+    create_2d_axes,
+    create_cyx_axes  # For multichannel images
 )
 
 # Create metadata using type-safe dataclasses
@@ -82,6 +84,26 @@ metadata = OMEZarrImageMetadata(ome=ome_metadata)
 
 # Convert to dictionary for zarr attrs
 attrs = metadata.to_dict()
+```
+
+### Multichannel Images
+
+```python
+from ome_zarr_writer.schema_models import (
+    create_cyx_axes,    # Channel, Y, X
+    create_czyx_axes,   # Channel, Z, Y, X
+    create_tyx_axes,    # Time, Y, X
+    create_tcyx_axes,   # Time, Channel, Y, X
+    create_scale_transformation
+)
+
+# Create CYX (multichannel) metadata
+axes = create_cyx_axes(0.1, 0.1, unit="micrometer")
+scale_transform = create_scale_transformation([1.0, 0.1, 0.1])  # channel, y, x
+
+# For fluorescence Z-stack
+axes = create_czyx_axes(0.1, 0.1, 0.3, unit="micrometer")  # x, y, z pixel sizes
+scale_transform = create_scale_transformation([1.0, 0.3, 0.1, 0.1])  # c, z, y, x
 ```
 
 ### Validation
@@ -102,6 +124,8 @@ errors = validator.get_validation_errors(attrs, "image")
 See the `examples/` directory for comprehensive usage examples:
 
 - `examples/schema_example.py` - Complete schema dataclass examples
+- `examples/cyx_example.py` - Multichannel image examples (CYX, CZYX, TYX, TCYX)
+- `examples/unit_validation_example.py` - Space axis unit validation demo
 - `examples/integration_example.py` - Integration with existing code
 - `examples/basic_example.py` - Basic writing operations
 - `examples/validation_example.py` - Validation workflows

@@ -55,17 +55,30 @@ class Axis:
     type: Optional[str] = None
     unit: Optional[str] = None
 
+    # Valid units for space axes according to OME-Zarr specification
+    VALID_SPACE_UNITS = {
+        "angstrom", "attometer", "centimeter", "decimeter", "exameter", 
+        "femtometer", "foot", "gigameter", "hectometer", "inch", "kilometer", 
+        "megameter", "meter", "micrometer", "mile", "millimeter", "nanometer", 
+        "parsec", "petameter", "picometer", "terameter", "yard", "yoctometer", 
+        "yottameter", "zeptometer", "zettameter"
+    }
+
     def __post_init__(self):
-        """Validate axis type."""
+        """Validate axis type and unit."""
         if self.type is not None:
-            # For space axes, type is required
-            if self.type == "space" and self.unit is None:
-                # Unit is typically required for space axes but not enforced here
-                pass
             # Validate known types
-            if self.type in ["channel", "time", "space"]:
-                # These are the standard types
-                pass
+            valid_types = ["channel", "time", "space"]
+            if self.type not in valid_types:
+                raise ValueError(f"Invalid axis type '{self.type}'. Must be one of: {', '.join(valid_types)}")
+            
+            # For space axes, validate unit if provided
+            if self.type == "space" and self.unit is not None:
+                if self.unit not in self.VALID_SPACE_UNITS:
+                    raise ValueError(
+                        f"Invalid unit '{self.unit}' for space axis. "
+                        f"Valid units are: {', '.join(sorted(self.VALID_SPACE_UNITS))}"
+                    )
 
 
 @dataclass
@@ -336,7 +349,16 @@ class OMEZarrImageMetadata:
 
 def create_2d_axes(pixel_size_x: float, pixel_size_y: float, 
                    unit: str = "micrometer") -> List[Axis]:
-    """Create standard 2D spatial axes."""
+    """Create standard 2D spatial axes (Y, X order).
+    
+    Args:
+        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
+        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
+        unit: Physical unit for spatial dimensions
+        
+    Returns:
+        List of 2D spatial axes in Y, X order
+    """
     return [
         Axis(name="y", type="space", unit=unit),
         Axis(name="x", type="space", unit=unit)
@@ -345,7 +367,17 @@ def create_2d_axes(pixel_size_x: float, pixel_size_y: float,
 
 def create_3d_axes(pixel_size_x: float, pixel_size_y: float, pixel_size_z: float,
                    unit: str = "micrometer") -> List[Axis]:
-    """Create standard 3D spatial axes."""
+    """Create standard 3D spatial axes (Z, Y, X order).
+    
+    Args:
+        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
+        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
+        pixel_size_z: Physical size per pixel in Z dimension (not used in axes, only for documentation)
+        unit: Physical unit for spatial dimensions
+        
+    Returns:
+        List of 3D spatial axes in Z, Y, X order
+    """
     return [
         Axis(name="z", type="space", unit=unit),
         Axis(name="y", type="space", unit=unit),
@@ -353,11 +385,104 @@ def create_3d_axes(pixel_size_x: float, pixel_size_y: float, pixel_size_z: float
     ]
 
 
+def create_cyx_axes(pixel_size_x: float, pixel_size_y: float,
+                    unit: str = "micrometer") -> List[Axis]:
+    """Create axes for multichannel 2D images (C, Y, X order).
+    
+    Args:
+        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
+        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
+        unit: Physical unit for spatial dimensions
+        
+    Returns:
+        List of axes in C, Y, X order
+    """
+    return [
+        Axis(name="c", type="channel"),
+        Axis(name="y", type="space", unit=unit),
+        Axis(name="x", type="space", unit=unit)
+    ]
+
+
+def create_czyx_axes(pixel_size_x: float, pixel_size_y: float, pixel_size_z: float,
+                     unit: str = "micrometer") -> List[Axis]:
+    """Create axes for multichannel 3D images (C, Z, Y, X order).
+    
+    Args:
+        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
+        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
+        pixel_size_z: Physical size per pixel in Z dimension (not used in axes, only for documentation)
+        unit: Physical unit for spatial dimensions
+        
+    Returns:
+        List of axes in C, Z, Y, X order
+    """
+    return [
+        Axis(name="c", type="channel"),
+        Axis(name="z", type="space", unit=unit),
+        Axis(name="y", type="space", unit=unit),
+        Axis(name="x", type="space", unit=unit)
+    ]
+
+
+def create_tyx_axes(pixel_size_x: float, pixel_size_y: float,
+                    unit: str = "micrometer") -> List[Axis]:
+    """Create axes for time-series 2D images (T, Y, X order).
+    
+    Args:
+        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
+        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
+        unit: Physical unit for spatial dimensions
+        
+    Returns:
+        List of axes in T, Y, X order
+    """
+    return [
+        Axis(name="t", type="time"),
+        Axis(name="y", type="space", unit=unit),
+        Axis(name="x", type="space", unit=unit)
+    ]
+
+
+def create_tcyx_axes(pixel_size_x: float, pixel_size_y: float,
+                     unit: str = "micrometer") -> List[Axis]:
+    """Create axes for time-series multichannel 2D images (T, C, Y, X order).
+    
+    Args:
+        pixel_size_x: Physical size per pixel in X dimension (not used in axes, only for documentation)
+        pixel_size_y: Physical size per pixel in Y dimension (not used in axes, only for documentation)
+        unit: Physical unit for spatial dimensions
+        
+    Returns:
+        List of axes in T, C, Y, X order
+    """
+    return [
+        Axis(name="t", type="time"),
+        Axis(name="c", type="channel"),
+        Axis(name="y", type="space", unit=unit),
+        Axis(name="x", type="space", unit=unit)
+    ]
+
+
 def create_scale_transformation(scales: List[float]) -> ScaleTransformation:
-    """Create a scale transformation."""
+    """Create a scale transformation.
+    
+    Args:
+        scales: Scale factors for each dimension (same order as axes)
+        
+    Returns:
+        ScaleTransformation object
+    """
     return ScaleTransformation(scale=scales)
 
 
 def create_translation_transformation(translation: List[float]) -> TranslationTransformation:
-    """Create a translation transformation."""
+    """Create a translation transformation.
+    
+    Args:
+        translation: Translation offsets for each dimension (same order as axes)
+        
+    Returns:
+        TranslationTransformation object
+    """
     return TranslationTransformation(translation=translation)

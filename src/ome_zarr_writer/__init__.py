@@ -19,6 +19,10 @@ from .schema_models import (
     Omero,
     create_2d_axes,
     create_3d_axes,
+    create_cyx_axes,
+    create_czyx_axes,
+    create_tyx_axes,
+    create_tcyx_axes,
     create_scale_transformation
 )
 
@@ -36,6 +40,10 @@ __all__ = [
     "Window",
     "Omero",
     "create_2d_axes",
-    "create_3d_axes", 
+    "create_3d_axes",
+    "create_cyx_axes",
+    "create_czyx_axes", 
+    "create_tyx_axes",
+    "create_tcyx_axes",
     "create_scale_transformation"
 ]

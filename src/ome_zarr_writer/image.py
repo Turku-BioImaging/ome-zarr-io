@@ -5,6 +5,8 @@ import zarr
 import numpy as np
 from pathlib import Path
 import dask.array as da
+import dask_image.ndfilters
+from skimage.transform import rescale
 
 
 class OMEZarrImage:
@@ -69,11 +71,85 @@ class OMEZarrImage:
     def _create_downscaled_arrays(self) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.
 
+        Creates a list of dask arrays where each subsequent array is downscaled
+        by a factor of 2 in the last two dimensions (Y and X axes), while preserving
+        all other dimensions (time, channel, Z). Uses Gaussian filtering before
+        downscaling to prevent aliasing artifacts.
+
         Returns:
-            List of downscaled dask arrays
+            List of downscaled dask arrays. The first array is the original image,
+            followed by progressively downscaled versions.
         """
-        # Implementation will go here
-        raise NotImplementedError("This method will be implemented")
+        if self.downscale_levels is None or self.downscale_levels <= 0:
+            return [self.image]
+        
+        arrays = [self.image]  # Level 0: original resolution
+        current_array = self.image
+        
+        for level in range(1, self.downscale_levels + 1):
+            # Check if Y or X dimensions are too small to downscale further
+            if current_array.shape[-2] < 2 or current_array.shape[-1] < 2:
+                # Stop creating more levels if dimensions become too small
+                break
+            
+            # Apply Gaussian filter to prevent aliasing
+            # Only apply to the last two dimensions (Y and X)
+            sigma = [0.0] * current_array.ndim
+            sigma[-2] = 0.5  # Y dimension - sigma for anti-aliasing before 2x downscale
+            sigma[-1] = 0.5  # X dimension - sigma for anti-aliasing before 2x downscale
+            
+            filtered_array = dask_image.ndfilters.gaussian_filter(
+                current_array, 
+                sigma=sigma,
+                mode='nearest'
+            )
+            
+            # Create a rescaling function that only operates on Y and X dimensions
+            def rescale_yx_block(block, block_id=None):
+                """Rescale only the last two dimensions of a block by factor of 0.5."""
+                # Create scale factors: 1 for all dimensions except last two
+                scale_factors = [1.0] * block.ndim
+                scale_factors[-2] = 0.5  # Y dimension (scale down by factor of 2)
+                scale_factors[-1] = 0.5  # X dimension (scale down by factor of 2)
+                
+                return rescale(
+                    block,
+                    scale=scale_factors,
+                    preserve_range=True,
+                    anti_aliasing=False,  # Already applied Gaussian filter
+                    channel_axis=None
+                ).astype(block.dtype)
+            
+            # Calculate the expected output shape
+            new_shape = list(current_array.shape)
+            new_shape[-2] = new_shape[-2] // 2  # Y dimension halved
+            new_shape[-1] = new_shape[-1] // 2  # X dimension halved
+            
+            # Calculate new chunk sizes (also halved for Y and X dimensions)
+            new_chunks = list(filtered_array.chunks)
+            new_chunks[-2] = tuple(chunk_size // 2 for chunk_size in new_chunks[-2])
+            new_chunks[-1] = tuple(chunk_size // 2 for chunk_size in new_chunks[-1])
+            
+            try:
+                current_array = da.map_blocks(
+                    rescale_yx_block,
+                    filtered_array,
+                    dtype=filtered_array.dtype,
+                    chunks=new_chunks,
+                    drop_axis=None,
+                    new_axis=None,
+                    meta=np.array([], dtype=filtered_array.dtype)
+                )
+                
+                arrays.append(current_array)
+                
+            except (ValueError, RuntimeError):
+                # If rescaling fails, stop here
+                break
+        
+        return arrays
+    
+
 
     def write(
         self,

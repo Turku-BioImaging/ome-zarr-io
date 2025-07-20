@@ -3,49 +3,65 @@
 Basic example of using ome-zarr-writer to create an OME-Zarr file.
 
 This example demonstrates how to:
-1. Create sample image data
-2. Initialize the OME-Zarr writer
-3. Write the image with metadata
+1. Create sample CZYX image data (Channel, Z, Y, X)
+2. Initialize the OME-Zarr image
+3. Create proper metadata using the schema dataclasses
 """
 
 import numpy as np
 from pathlib import Path
-from ome_zarr_writer import OMEZarrWriter
+from ome_zarr_writer import OMEZarrImage, create_axes
 
 
 def main():
-    """Create a basic OME-Zarr file."""
-    print("Creating sample OME-Zarr file...")
+    """Create a basic OME-Zarr file with CZYX dimensions."""
+    print("Creating sample OME-Zarr file with CZYX format...")
     
-    # Create sample RGB image data
-    height, width, channels = 512, 512, 3
-    image = np.random.randint(0, 255, size=(height, width, channels), dtype=np.uint8)
+    # Create sample CZYX image data
+    # Shape: (channels, z_slices, height, width)
+    # CZYX is the standard format for OME-Zarr multichannel 3D images
+    channels, z_slices, height, width = 3, 10, 512, 512
+    image = np.random.randint(0, 255, size=(channels, z_slices, height, width), dtype=np.uint8)
+    
+    print(f"Image shape: {image.shape} (C={channels}, Z={z_slices}, Y={height}, X={width})")
     
     # Define output path
-    output_path = Path("example_output.zarr")
+    output_path = Path("example-czyx.zarr")
     
     # Remove existing file if it exists
     if output_path.exists():
         import shutil
         shutil.rmtree(output_path)
     
-    # Initialize writer
-    writer = OMEZarrWriter(output_path, overwrite=True)
+    # Create axes for CZYX layout
+    # Pixel sizes: X=0.1μm, Y=0.1μm, Z=0.25μm
+    axes = create_axes("czyx", 0.1, 0.1, 0.25, unit="micrometer")
+    
+    # Create dimension names list
+    dims = ["c", "z", "y", "x"]
     
     try:
-        # Write image with metadata
-        writer.write_image(
+        # Initialize OME-Zarr image
+        ome_zarr_image = OMEZarrImage(
+            path=output_path,
             image=image,
-            pixel_size=(0.5, 0.5),  # 0.5 micrometers per pixel
-            units=["micrometer", "micrometer"],
-            channel_names=["Red", "Green", "Blue"]
+            dims=dims,
+            overwrite=True
         )
-        print(f"Successfully created OME-Zarr file: {output_path}")
+        
+        print(f"Successfully initialized OME-Zarr image: {output_path}")
+        print(f"Dimensions: {dims}")
+        print(f"Axes created: {[ax.name for ax in axes]}")
+        print("Pixel sizes: X=0.1μm, Y=0.1μm, Z=0.25μm")
+        
+        # The ome_zarr_image object is now ready for further processing
+        print(f"OME-Zarr image object created successfully for {ome_zarr_image.path}")
         
     except NotImplementedError:
         print("Note: This is a skeleton implementation.")
         print("The actual writing functionality will be implemented in future versions.")
-        print(f"Writer initialized for: {output_path}")
+        print(f"OME-Zarr image initialized for: {output_path}")
+        print(f"Image shape: {image.shape} (CZYX format)")
 
 
 if __name__ == "__main__":

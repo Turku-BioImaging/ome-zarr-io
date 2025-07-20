@@ -33,7 +33,9 @@ dependencies = [
     "numpy>=1.20.0",
     "ome-zarr>=0.8.0",
     "jsonschema>=4.0.0",
-    "dask"
+    "dask",
+    "dask-image",
+    "scikit-image"
 ]
 
 [project.optional-dependencies]

@@ -148,19 +148,46 @@ def test_create_multiscale_group_not_implemented(temp_dir, sample_2d_image):
         )
 
 
-def test_create_downscaled_arrays_not_implemented(temp_dir, sample_2d_image):
-    """Test that _create_downscaled_arrays raises NotImplementedError."""
+def test_create_downscaled_arrays_basic_functionality(temp_dir, sample_2d_image):
+    """Test that _create_downscaled_arrays creates downscaled versions correctly."""
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     
     writer = OMEZarrImage(
         path=path,
         image=sample_2d_image,
-        dims=dims
+        dims=dims,
+        downscale_levels=2
     )
     
-    with pytest.raises(NotImplementedError):
-        writer._create_downscaled_arrays()
+    arrays = writer._create_downscaled_arrays()
+    
+    # Should have 3 levels: original + 2 downscaled
+    assert len(arrays) == 3
+    
+    # Check shapes
+    assert arrays[0].shape == sample_2d_image.shape  # Original
+    assert arrays[1].shape == (50, 50)  # Half size
+    assert arrays[2].shape == (25, 25)  # Quarter size
+
+
+def test_create_downscaled_arrays_no_downscaling(temp_dir, sample_2d_image):
+    """Test that _create_downscaled_arrays returns only original when no downscaling."""
+    path = temp_dir / "test.zarr"
+    dims = ["y", "x"]
+    
+    writer = OMEZarrImage(
+        path=path,
+        image=sample_2d_image,
+        dims=dims,
+        downscale_levels=None
+    )
+    
+    arrays = writer._create_downscaled_arrays()
+    
+    # Should have only 1 level: original
+    assert len(arrays) == 1
+    assert arrays[0].shape == sample_2d_image.shape
 
 
 def test_write_not_implemented(temp_dir, sample_2d_image):

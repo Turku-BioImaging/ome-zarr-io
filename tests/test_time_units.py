@@ -6,7 +6,8 @@ import pytest
 from ome_zarr_writer.schema_models import (
     Axis, 
     create_axes, 
-    validate_tczyx_axis_ordering
+    validate_tczyx_axis_ordering,
+    VALID_TIME_UNITS
 )
 
 

@@ -207,6 +207,37 @@ class TestWriteMethod:
         level_0 = group['0']
         np.testing.assert_array_equal(level_0[:], image2)
 
+    def test_write_with_custom_chunks_and_shards(self, tmp_path):
+        """Test writing with custom chunks and shards parameters."""
+        # Create test image
+        image = np.random.randint(0, 255, size=(2, 64, 64), dtype=np.uint8)
+        dims = ["c", "y", "x"]
+        axis_units = {"unit": "micrometer"}
+        
+        output_path = tmp_path / "test_chunks_shards.zarr"
+        
+        # Create OME-Zarr image with custom chunks and shards
+        ome_zarr_image = OmeZarrImage(
+            path=output_path,
+            image=image,
+            dims=dims,
+            axis_units=axis_units,
+            overwrite=True,
+            chunks=(1, 32, 32),  # Custom chunk size
+            shards=(2, 64, 64)   # Custom shard size
+        )
+        ome_zarr_image.write()
+        
+        # Verify the chunks and shards were applied
+        group = zarr.open_group(str(output_path), mode='r')
+        level_0 = group['0']
+        
+        # Check chunk configuration
+        assert level_0.chunks == (1, 32, 32)
+        # Check shard configuration (if supported by zarr version)
+        if hasattr(level_0, 'shards') and level_0.shards:
+            assert level_0.shards == (2, 64, 64)
+
     def test_write_preserves_original_image(self, tmp_path):
         """Test that writing doesn't modify the original image."""
         # Create test image

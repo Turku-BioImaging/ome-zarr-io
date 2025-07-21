@@ -23,7 +23,7 @@ class TestChunksAndShardsAPI:
         """Test that chunks parameter works in write() method."""
         output_path = tmp_path / "test_chunks_write.zarr"
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_chunks = (32, 32)
 
         writer = OmeZarrImage(
@@ -44,7 +44,7 @@ class TestChunksAndShardsAPI:
         """Test that shards parameter works in write() method."""
         output_path = tmp_path / "test_shards_write.zarr"
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_shards = (128, 128)
 
         writer = OmeZarrImage(
@@ -66,7 +66,7 @@ class TestChunksAndShardsAPI:
         """Test that chunks and shards work together."""
         output_path = tmp_path / "test_chunks_shards_together.zarr"
         dims = ["c", "z", "y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
         
         # Use compatible chunks and shards
         # Shards must be divisible by chunks
@@ -93,7 +93,7 @@ class TestChunksAndShardsAPI:
         """Test chunks with multiscale pyramids."""
         output_path = tmp_path / "test_chunks_multiscale.zarr"
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_chunks = (32, 32)
 
         writer = OmeZarrImage(
@@ -118,7 +118,7 @@ class TestChunksAndShardsAPI:
         """Test that chunks and shards are no longer accepted in constructor."""
         output_path = tmp_path / "test_constructor.zarr"
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
 
         # This should work - no chunks/shards in constructor
         writer = OmeZarrImage(
@@ -143,7 +143,7 @@ class TestChunksAndShardsAPI:
         """Test that data integrity is preserved when using chunks."""
         output_path = tmp_path / "test_integrity.zarr"
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_chunks = (64, 64)
 
         writer = OmeZarrImage(

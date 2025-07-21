@@ -16,7 +16,7 @@ class TestWriteMethod:
         # Create test image
         image = np.random.randint(0, 255, size=(128, 128), dtype=np.uint8)
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
 
         output_path = tmp_path / "test_2d.zarr"
 
@@ -77,7 +77,7 @@ class TestWriteMethod:
         # Create test image
         image = np.random.randint(0, 255, size=(2, 3, 64, 64), dtype=np.uint8)
         dims = ["c", "z", "y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
         output_path = tmp_path / "test_multiscale.zarr"
 
@@ -126,15 +126,10 @@ class TestWriteMethod:
         # Create test image
         image = np.random.randint(0, 255, size=(32, 32), dtype=np.uint8)
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
 
-        # Define coordinate transformations
-        coordinate_transformations: List[
-            Union[ScaleTransformation, TranslationTransformation]
-        ] = [
-            ScaleTransformation(scale=[0.1, 0.1]),  # 0.1 μm pixel size
-            TranslationTransformation(translation=[5.0, 10.0]),  # 5,10 μm offset
-        ]
+        # Define scale transformations using dictionary format
+        scale_transformations = {"y": 0.1, "x": 0.1}  # 0.1 μm pixel size
 
         output_path = tmp_path / "test_transforms.zarr"
 
@@ -144,7 +139,7 @@ class TestWriteMethod:
             image=image,
             dims=dims,
             axis_units=axis_units,
-            coordinate_transformations=coordinate_transformations,
+            scale_transformations=scale_transformations,
             overwrite=True,
         )
 
@@ -158,24 +153,19 @@ class TestWriteMethod:
         dataset = multiscale["datasets"][0]
 
         transformations = dataset["coordinateTransformations"]
-        assert len(transformations) == 2
+        assert len(transformations) == 1
 
         # Check scale transformation
         scale_transform = transformations[0]
         assert scale_transform["type"] == "scale"
         assert scale_transform["scale"] == [0.1, 0.1]
 
-        # Check translation transformation
-        translation_transform = transformations[1]
-        assert translation_transform["type"] == "translation"
-        assert translation_transform["translation"] == [5.0, 10.0]
-
     def test_write_overwrite_existing(self, tmp_path):
         """Test overwriting existing files."""
         # Create test image
         image = np.random.randint(0, 255, size=(32, 32), dtype=np.uint8)
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
 
         output_path = tmp_path / "test_overwrite.zarr"
 
@@ -213,7 +203,7 @@ class TestWriteMethod:
         # Create test image
         image = np.random.randint(0, 255, size=(2, 64, 64), dtype=np.uint8)
         dims = ["c", "y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
 
         output_path = tmp_path / "test_chunks_shards.zarr"
 
@@ -247,7 +237,7 @@ class TestWriteMethod:
         original_image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
         image_copy = original_image.copy()
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
 
         output_path = tmp_path / "test_preserve.zarr"
 

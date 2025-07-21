@@ -6,7 +6,6 @@ import zarr
 from pathlib import Path
 import tempfile
 from ome_zarr_writer.image import OmeZarrImage
-from ome_zarr_writer.schema_models import ScaleTransformation, TranslationTransformation
 
 
 def main():
@@ -20,7 +19,7 @@ def main():
         # Create sample image
         image_2d = np.random.randint(0, 255, size=(128, 128), dtype=np.uint8)
         dims = ["y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"y": "micrometer", "x": "micrometer"}
         output_path = Path(tmp_dir) / "simple_2d.zarr"
 
         # Create and write OME-Zarr
@@ -46,17 +45,14 @@ def main():
         # Create sample 4D image (channels, z, y, x)
         image_4d = np.random.randint(0, 255, size=(3, 10, 128, 128), dtype=np.uint16)
         dims = ["c", "z", "y", "x"]
-        axis_units = {"unit": "micrometer"}
+        axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
-        # Define coordinate transformations (0.1 μm pixel size, 5 μm offset)
-        coord_transforms = [
-            ScaleTransformation(
-                scale=[1.0, 1.0, 0.1, 0.1]
-            ),  # c=1, z=1μm, y=0.1μm, x=0.1μm
-            TranslationTransformation(
-                translation=[0.0, 0.0, 5.0, 5.0]
-            ),  # 5μm offset in Y,X
-        ]
+        # Define scale transformations (0.1 μm pixel size)
+        scale_transforms = {
+            "z": 1.0,    # 1 μm z spacing
+            "y": 0.1,    # 0.1 μm y pixel size
+            "x": 0.1     # 0.1 μm x pixel size
+        }
 
         output_path = Path(tmp_dir) / "multiscale_4d.zarr"
 
@@ -66,7 +62,7 @@ def main():
             image=image_4d,
             dims=dims,
             axis_units=axis_units,
-            coordinate_transformations=coord_transforms,
+            scale_transformations=scale_transforms,
             downscale_levels=3,
             downscale_factor=2,
             overwrite=True,
@@ -95,7 +91,7 @@ def main():
         # Create time-lapse image (time, y, x)
         image_time = np.random.randint(0, 255, size=(5, 64, 64), dtype=np.uint8)
         dims = ["t", "y", "x"]
-        axis_units = {"unit": "micrometer", "time_unit": "second"}
+        axis_units = {"t": "second", "y": "micrometer", "x": "micrometer"}
 
         output_path = Path(tmp_dir) / "timelapse.zarr"
 

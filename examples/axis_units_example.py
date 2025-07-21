@@ -89,13 +89,15 @@ def example_with_axis_dictionary():
 
     # Define axis units as a dictionary (simpler approach)
     axis_units = {
-        "unit": "nanometer",  # Unit for spatial dimensions (z, y, x)
-        "time_unit": "second",  # Unit for time dimension
+        "t": "second",
+        "z": "nanometer", 
+        "y": "nanometer",
+        "x": "nanometer"
     }
 
     print("Axis units defined as dictionary:")
-    print(f"  Spatial unit: {axis_units['unit']}")
-    print(f"  Time unit: {axis_units['time_unit']}")
+    print(f"  Spatial unit: {axis_units['z']}")
+    print(f"  Time unit: {axis_units['t']}")
 
     # Create OME-Zarr image
     ome_zarr_image = OmeZarrImage(

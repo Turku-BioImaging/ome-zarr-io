@@ -36,12 +36,12 @@ def main():
     dims = ["c", "z", "y", "x"]
 
     # Define axis units - spatial dimensions get micrometers, channel has no unit
-    axis_units = {"unit": "micrometer"}
+    axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
     # For more advanced usage with specific pixel sizes and coordinate transformations:
     # from ome_zarr_writer.schema_models import ScaleTransformation
-    # axis_units = {"unit": "micrometer"}
-    # coordinate_transformations = [ScaleTransformation(scale=[1.0, 0.25, 0.1, 0.1])]  # CZYX pixel sizes
+    # axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
+    # scale_transformations = {"z": 0.25, "y": 0.1, "x": 0.1}  # ZYX pixel sizes
 
     # Initialize OME-Zarr image with multiscale support
     ome_zarr_image = OmeZarrImage(

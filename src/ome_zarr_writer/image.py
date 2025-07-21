@@ -9,7 +9,6 @@ import dask_image.ndfilters
 from skimage.transform import rescale
 from .schema_models import (
     ScaleTransformation,
-    TranslationTransformation,
     Axis,
     Dataset,
     Multiscale,
@@ -32,9 +31,7 @@ class OmeZarrImage:
         image: Union[da.Array, np.ndarray],
         dims: List[str],
         axis_units: Union[List[Axis], Dict[str, Any]],
-        coordinate_transformations: Optional[
-            List[Union[ScaleTransformation, TranslationTransformation]]
-        ] = None,
+        scale_transformations: Optional[Dict[str, Any]] = None,
         downscale_levels: Optional[int] = None,
         downscale_factor: int = 2,
         overwrite: bool = False,
@@ -46,10 +43,15 @@ class OmeZarrImage:
             image: Dask or NumPy array representing the image data.
             dims: List of dimension names (e.g., ["t", "c", "z", "y", "x"]).
             axis_units: Either a list of Axis objects whose length corresponds to the number
-                of dimensions of the input image, or a dictionary that can be mapped to
-                create Axis objects (e.g., {"unit": "micrometer", "time_unit": "second"}).
-            coordinate_transformations: Optional list of coordinate transformations for the original image.
-                These will be automatically adjusted for each downscale level.
+                of dimensions of the input image, or a dictionary that specifies units for each
+                dimension. Dictionary format:
+                - Per-dimension units: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
+            scale_transformations: Optional dictionary specifying scale values for dimensions.
+                Examples:
+                - {"z": 0.25, "y": 0.1, "x": 0.1} for spatial dimensions
+                - {"t": 0.5, "z": 0.25, "y": 0.1, "x": 0.1} including time axis
+                Units are determined by the axis_units parameter. Scale values will be 
+                automatically adjusted for each downscale level.
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
             downscale_factor: Factor by which to downscale each level (default: 2).
             overwrite: Whether to overwrite existing files.
@@ -63,12 +65,16 @@ class OmeZarrImage:
         else:
             self.image = image
         self.dims = dims
-        self.coordinate_transformations = coordinate_transformations
         self.downscale_factor = downscale_factor
         self.overwrite = overwrite
 
         # Process and validate axis_units
         self.axes = self._process_axis_units(axis_units, dims, self.image.shape)
+
+        # Process scale transformations (convert dict format to ScaleTransformation)
+        self.coordinate_transformations = self._process_scale_transformations(
+            scale_transformations, dims
+        )
 
         # Validate downscale_factor
         if downscale_factor < 2:
@@ -207,17 +213,16 @@ class OmeZarrImage:
 
     def _create_coordinate_transformations_for_levels(
         self,
-    ) -> List[List[Union[ScaleTransformation, TranslationTransformation]]]:
+    ) -> List[List[ScaleTransformation]]:
         """Create coordinate transformations for each downscale level.
 
-        Takes the coordinate transformations provided for the original image and
-        adjusts them appropriately for each downscale level. For scale transformations,
-        the spatial dimensions (Y and X, which are the last two dimensions) are
-        multiplied by the downscale factor for each level. Translation transformations
-        remain unchanged across levels.
+        Takes the scale transformations provided for the original image and
+        adjusts them appropriately for each downscale level. The spatial dimensions 
+        (Y and X, which are the last two dimensions) are multiplied by the 
+        downscale factor for each level.
 
         Returns:
-            List of coordinate transformation lists, one for each resolution level.
+            List of scale transformation lists, one for each resolution level.
             The first list corresponds to the original image, subsequent lists
             correspond to progressively downscaled levels.
         """
@@ -245,28 +250,16 @@ class OmeZarrImage:
             level_transformations = []
 
             for transform in self.coordinate_transformations:
-                if isinstance(transform, ScaleTransformation):
-                    # For scale transformations, adjust spatial dimensions (Y, X)
-                    new_scale = transform.scale.copy()
+                # For scale transformations, adjust spatial dimensions (Y, X)
+                new_scale = transform.scale.copy()
 
-                    # The last two dimensions are always Y, X in our schema
-                    # Multiply by downscale_factor^level for these dimensions
-                    scale_factor = self.downscale_factor**level
-                    new_scale[-2] *= scale_factor  # Y dimension
-                    new_scale[-1] *= scale_factor  # X dimension
+                # The last two dimensions are always Y, X in our schema
+                # Multiply by downscale_factor^level for these dimensions
+                scale_factor = self.downscale_factor**level
+                new_scale[-2] *= scale_factor  # Y dimension
+                new_scale[-1] *= scale_factor  # X dimension
 
-                    level_transformations.append(ScaleTransformation(scale=new_scale))
-
-                elif isinstance(transform, TranslationTransformation):
-                    # Translation transformations remain the same across levels
-                    level_transformations.append(
-                        TranslationTransformation(
-                            translation=transform.translation.copy()
-                        )
-                    )
-                else:
-                    # For any other transformation type, keep it unchanged
-                    level_transformations.append(transform)
+                level_transformations.append(ScaleTransformation(scale=new_scale))
 
             all_transformations.append(level_transformations)
 
@@ -328,33 +321,143 @@ class OmeZarrImage:
         """Create Axis objects from a dictionary specification.
 
         Args:
-            axis_dict: Dictionary containing unit specifications (e.g., {"unit": "micrometer", "time_unit": "second"})
+            axis_dict: Dictionary containing unit specifications. Per-dimension format: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
             dims: List of dimension names
 
         Returns:
             List of Axis objects
         """
-        # Get default units
-        space_unit = axis_dict.get("unit", "micrometer")
-        time_unit = axis_dict.get("time_unit", None)
+        # Per-dimension format
+        return self._create_axes_from_per_dimension_dict(axis_dict, dims)
 
+    def _create_axes_from_per_dimension_dict(
+        self, axis_dict: Dict[str, Any], dims: List[str]
+    ) -> List[Axis]:
+        """Create Axis objects from per-dimension unit specification.
+
+        Args:
+            axis_dict: Dictionary with dimension names as keys and units as values
+                Example: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
+            dims: List of dimension names
+
+        Returns:
+            List of Axis objects
+
+        Raises:
+            ValueError: If required dimensions are missing or invalid units are provided
+        """
         # Create axes based on dimension names
         axes = []
         for dim in dims:
             dim_lower = dim.lower()
-
+            
+            # Get unit for this dimension (case insensitive lookup)
+            unit = None
+            for key, value in axis_dict.items():
+                if key.lower() == dim_lower:
+                    unit = value
+                    break
+            
             if dim_lower == "t":
-                axes.append(Axis(name=dim, type="time", unit=time_unit))
+                if unit is None:
+                    raise ValueError(f"Time dimension '{dim}' requires a unit specification")
+                axes.append(Axis(name=dim, type="time", unit=unit))
             elif dim_lower == "c":
+                # Channel dimension - no unit needed, can be omitted from axis_units
                 axes.append(Axis(name=dim, type="channel", unit=None))
             elif dim_lower in ["x", "y", "z"]:
-                axes.append(Axis(name=dim, type="space", unit=space_unit))
+                if unit is None:
+                    raise ValueError(f"Spatial dimension '{dim}' requires a unit specification")
+                axes.append(Axis(name=dim, type="space", unit=unit))
             else:
                 raise ValueError(
                     f"Unknown dimension '{dim}'. Valid dimensions are: t, c, z, y, x"
                 )
 
         return axes
+
+    def _process_scale_transformations(
+        self,
+        scale_transformations: Optional[Dict[str, Any]],
+        dims: List[str],
+    ) -> Optional[List[ScaleTransformation]]:
+        """Process scale transformations and convert dictionary format to ScaleTransformation objects.
+
+        Args:
+            scale_transformations: Dictionary specifying pixel sizes for dimensions
+            dims: List of dimension names
+
+        Returns:
+            List containing a single ScaleTransformation object or None
+
+        Raises:
+            ValueError: If the dictionary format is invalid
+        """
+        if scale_transformations is None:
+            return None
+
+        if isinstance(scale_transformations, dict):
+            return self._create_scale_transformation_from_dict(scale_transformations, dims)
+        else:
+            raise ValueError(
+                f"scale_transformations must be a dictionary, got {type(scale_transformations)}"
+            )
+
+    def _create_scale_transformation_from_dict(
+        self,
+        transform_dict: Dict[str, Any],
+        dims: List[str],
+    ) -> List[ScaleTransformation]:
+        """Create a ScaleTransformation object from a dictionary specification.
+
+        Args:
+            transform_dict: Dictionary with dimension names as keys and scale values as values.
+                Values must be numbers (int or float).
+                Examples:
+                - {"z": 0.25, "y": 0.1, "x": 0.1}
+                - {"t": 0.5, "z": 0.25, "y": 0.1, "x": 0.1}
+            dims: List of dimension names
+
+        Returns:
+            List containing a single ScaleTransformation object
+
+        Raises:
+            ValueError: If the dictionary format is invalid
+        """
+        # Initialize scale array with 1.0 for all dimensions
+        scale = [1.0] * len(dims)
+
+        # Process each dimension in the dictionary
+        for dim_name, value in transform_dict.items():
+            dim_name_lower = dim_name.lower()
+
+            # Find the dimension index
+            try:
+                dim_index = [d.lower() for d in dims].index(dim_name_lower)
+            except ValueError:
+                raise ValueError(
+                    f"Dimension '{dim_name}' not found in dims {dims}. "
+                    f"Valid dimensions are: {', '.join(dims)}"
+                )
+
+            # Extract scale value - only accept numbers
+            if isinstance(value, (int, float)):
+                scale_value = float(value)
+            else:
+                raise ValueError(
+                    f"Invalid value for dimension '{dim_name}': {value}. "
+                    f"Expected a number (int or float)"
+                )
+
+            # Validate scale value
+            if scale_value <= 0:
+                raise ValueError(
+                    f"Scale value for dimension '{dim_name}' must be positive, got {scale_value}"
+                )
+
+            scale[dim_index] = scale_value
+
+        return [ScaleTransformation(scale=scale)]
 
     def write(
         self,
@@ -427,14 +530,17 @@ class OmeZarrImage:
                 transformations = level_transformations[level]
             else:
                 # Create default scale transformation if none provided
-                default_transformations: List[
-                    Union[ScaleTransformation, TranslationTransformation]
-                ] = [ScaleTransformation(scale=[1.0] * len(self.dims))]
-                transformations = default_transformations
+                transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
 
             # Create dataset metadata
+            from typing import cast
+            from .schema_models import TranslationTransformation
             dataset = Dataset(
-                path=str(level), coordinateTransformations=transformations
+                path=str(level), 
+                coordinateTransformations=cast(
+                    List[Union[ScaleTransformation, TranslationTransformation]], 
+                    transformations
+                )
             )
             datasets.append(dataset)
 

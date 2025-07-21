@@ -46,21 +46,85 @@ pip install -r requirements.txt
 
 ```python
 import numpy as np
-from ome_zarr_writer import write_ome_zarr
-from ome_zarr_writer.schema_models import create_axes
+from ome_zarr_writer import OmeZarrImage
 
-# Create sample image data
-image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint8)
+# Create sample multichannel 3D confocal image data
+image = np.random.randint(0, 255, size=(2, 32, 512, 512), dtype=np.uint8)
 
-# Create axes for 2D image
-axes = create_axes("yx", 0.5, 0.5, unit="micrometer")
+dims = ["c", "z", "y", "x"]
 
-# Write image
-write_ome_zarr(
-    path="output.zarr",
+# Define axis units for each dimension explicitly
+axis_units = {
+    "z": "micrometer",
+    "y": "micrometer", 
+    "x": "micrometer"
+    # Note: 'c' (channel) dimension doesn't need a unit
+}
+
+# Define scale transformations (pixel/voxel sizes)
+# Units are determined by axis_units above
+scale_transformations = {
+    "z": 0.325,  # 0.325 μm z-step size
+    "y": 0.15,   # 0.15 μm pixel size in Y  
+    "x": 0.15    # 0.15 μm pixel size in X
+}
+
+ome_zarr_image = OmeZarrImage(
+    path='example.ome.zarr',
     image=image,
-    axes=axes
+    dims=dims,
+    axis_units=axis_units,
+    scale_transformations=scale_transformations,
+    downscale_levels=3,  # Create 3 additional downscale levels
+    overwrite=True
 )
+
+# Write the OME-Zarr file
+ome_zarr_image.write()
+
+print("✅ Successfully created example.ome.zarr")
+```
+
+### Time-lapse Image with Scale Transformations
+
+```python
+import numpy as np
+from ome_zarr_writer import OmeZarrImage
+
+# Create sample 4D time-lapse data (T, Z, Y, X)
+image = np.random.randint(0, 255, size=(10, 8, 256, 256), dtype=np.uint16)
+
+dims = ["t", "z", "y", "x"]
+
+# Define axis units for both temporal and spatial dimensions
+axis_units = {
+    "t": "second",       # Time dimension in seconds
+    "z": "micrometer",   # Z dimension in micrometers
+    "y": "micrometer",   # Y dimension in micrometers
+    "x": "micrometer"    # X dimension in micrometers
+}
+
+# Define scale transformations for all dimensions
+scale_transformations = {
+    "t": 0.5,    # 0.5 second frame interval
+    "z": 0.25,   # 0.25 μm z-step size  
+    "y": 0.065,  # 0.065 μm pixel size in Y
+    "x": 0.065   # 0.065 μm pixel size in X
+}
+
+ome_zarr_image = OmeZarrImage(
+    path='timelapse.ome.zarr',
+    image=image,
+    dims=dims,
+    axis_units=axis_units,
+    scale_transformations=scale_transformations,
+    downscale_levels=2,
+    overwrite=True
+)
+
+ome_zarr_image.write()
+
+print("✅ Successfully created timelapse.ome.zarr with temporal metadata")
 ```
 
 ### Using Schema Dataclasses with TCZYX Ordering

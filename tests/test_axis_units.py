@@ -61,7 +61,7 @@ class TestAxisUnits:
         dims = ["t", "c", "z", "y", "x"]
 
         # Create axis units as a dictionary
-        axis_units: Dict[str, Any] = {"unit": "nanometer", "time_unit": "second"}
+        axis_units: Dict[str, Any] = {"t": "second", "z": "nanometer", "y": "nanometer", "x": "nanometer"}
 
         # Create OME-Zarr image
         ome_zarr_image = OmeZarrImage(
@@ -96,13 +96,13 @@ class TestAxisUnits:
         assert ome_zarr_image.axes[4].unit == "nanometer"
 
     def test_axis_units_with_minimal_dictionary(self, tmp_path):
-        """Test axis_units parameter with minimal dictionary (defaults)."""
+        """Test axis_units parameter with per-dimension specification."""
         # Create test image
         image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)  # YX
         dims = ["y", "x"]
 
-        # Create axis units as a minimal dictionary (will use defaults)
-        axis_units: Dict[str, Any] = {}
+        # Create axis units with per-dimension specification
+        axis_units: Dict[str, Any] = {"y": "micrometer", "x": "micrometer"}
 
         # Create OME-Zarr image
         ome_zarr_image = OmeZarrImage(
@@ -113,16 +113,16 @@ class TestAxisUnits:
             overwrite=True,
         )
 
-        # Check that axes were created with default units
+        # Check that axes were created with specified units
         assert len(ome_zarr_image.axes) == 2
 
         assert ome_zarr_image.axes[0].name == "y"
         assert ome_zarr_image.axes[0].type == "space"
-        assert ome_zarr_image.axes[0].unit == "micrometer"  # default
+        assert ome_zarr_image.axes[0].unit == "micrometer"
 
         assert ome_zarr_image.axes[1].name == "x"
         assert ome_zarr_image.axes[1].type == "space"
-        assert ome_zarr_image.axes[1].unit == "micrometer"  # default
+        assert ome_zarr_image.axes[1].unit == "micrometer"
 
     def test_axis_units_list_length_mismatch(self, tmp_path):
         """Test that axis_units list length must match dims length."""
@@ -153,7 +153,7 @@ class TestAxisUnits:
         image = np.random.randint(0, 255, size=(2, 64, 64), dtype=np.uint8)  # 3D image
         dims = ["y", "x"]  # Only 2D dims
 
-        axis_units: Dict[str, Any] = {"unit": "micrometer"}
+        axis_units: Dict[str, Any] = {"y": "micrometer", "x": "micrometer"}
 
         with pytest.raises(
             ValueError, match="Length of dims.*must match number of image dimensions"
@@ -171,7 +171,7 @@ class TestAxisUnits:
         image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
         dims = ["y", "invalid"]  # Invalid dimension name
 
-        axis_units: Dict[str, Any] = {"unit": "micrometer"}
+        axis_units: Dict[str, Any] = {"y": "micrometer", "invalid": "micrometer"}
 
         with pytest.raises(ValueError, match="Unknown dimension 'invalid'"):
             OmeZarrImage(

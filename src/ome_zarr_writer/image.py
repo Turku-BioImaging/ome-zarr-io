@@ -7,6 +7,7 @@ from pathlib import Path
 import dask.array as da
 import dask_image.ndfilters
 from skimage.transform import rescale
+from zarr.core.array import CompressorsLike
 from .schema_models import (
     ScaleTransformation,
     Axis,
@@ -463,6 +464,7 @@ class OmeZarrImage:
         self,
         chunks: Optional[Union[int, tuple, str]] = None,
         shards: Optional[Union[int, tuple]] = None,
+        compressors: Optional[CompressorsLike] = None,
     ) -> None:
         """Write the image as OME-Zarr.
 
@@ -477,6 +479,9 @@ class OmeZarrImage:
                 If None, zarr will determine chunk size automatically.
             shards: Shard shape for zarr arrays (zarr v3 feature). Can be an int or tuple.
                 If None, no sharding is applied.
+            compressors: List of compressors to apply to zarr arrays. Can be codec objects
+                from zarr.codecs (e.g., BloscCodec, GzipCodec, ZstdCodec) or a single
+                compressor. If None, zarr will use default compression.
         """
         import shutil
 
@@ -520,6 +525,10 @@ class OmeZarrImage:
             # Add shards parameter if specified (zarr v3 feature)
             if shards is not None:
                 zarr_kwargs["shards"] = shards
+
+            # Add compressors parameter if specified
+            if compressors is not None:
+                zarr_kwargs["compressors"] = compressors
 
             # Create zarr array for this level and store the data
             zarr_array = root_group.create_array(**zarr_kwargs)

@@ -10,15 +10,13 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 ## Features
 
 - Write OME-Zarr 0.5 compliant multiscale images
+- Integration with Zarr version 3.
 - Type-safe Python dataclasses implementing the OME-Zarr schema
 - JSON Schema validation for metadata compliance
-- Support for various image formats and data types
 - Strict TCZYX dimension ordering - Input images always follow Time-Channel-Z-Y-X order (T, C, Z optional)
-- Multichannel image support (CYX, CZYX, TYX, TCYX, TCZYX dimensions)
 - Space axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
-- Efficient handling of large image datasets
-- Integration with the zarr ecosystem
-- OMERO display settings support
+- Time axis unit validation
+
 
 ## Installation
 
@@ -127,55 +125,49 @@ ome_zarr_image.write()
 print("✅ Successfully created timelapse.ome.zarr with temporal metadata")
 ```
 
-### Using Schema Dataclasses with TCZYX Ordering
+### Advanced Storage Configuration
 
 ```python
-from ome_zarr_writer.schema_models import (
-    OMEZarrImageMetadata,
-    OMEMetadata,
-    Multiscale,
-    Dataset,
-    ScaleTransformation,
-    create_axes,
-    validate_tczyx_axis_ordering
+import numpy as np
+from ome_zarr_writer import OmeZarrImage
+
+# Create sample large 3D dataset
+image = np.random.randint(0, 65535, size=(64, 1024, 1024), dtype=np.uint16)
+
+dims = ["z", "y", "x"]
+
+axis_units = {
+    "z": "micrometer",
+    "y": "micrometer",
+    "x": "micrometer"
+}
+
+scale_transformations = {
+    "z": 0.2,   # 0.2 μm z-step
+    "y": 0.1,   # 0.1 μm pixel size
+    "x": 0.1    # 0.1 μm pixel size
+}
+
+# Configure chunking, sharding, and compression
+ome_zarr_image = OmeZarrImage(
+    path='advanced.ome.zarr',
+    image=image,
+    dims=dims,
+    axis_units=axis_units,
+    scale_transformations=scale_transformations,
+    downscale_levels=3,
+    chunks=(8, 256, 256),      # Optimize chunk size for access patterns
+    shards=(32, 512, 512),     # Group chunks into shards for efficiency
+    compression="zstd",        # Use Zstandard compression
+    compression_level=3,       # Balance compression vs speed
+    overwrite=True
 )
 
-# All axis creation uses unified create_axes function
-# Valid combinations: YX, ZYX, CYX, CZYX, TYX, TZYX, TCYX, TCZYX
+ome_zarr_image.write()
 
-# Create metadata using type-safe dataclasses
-axes = create_axes("yx", 0.1, 0.1, unit="micrometer")
-scale_transform = ScaleTransformation(scale=[0.1, 0.1])
-dataset = Dataset(path="0", coordinateTransformations=[scale_transform])
-multiscale = Multiscale(datasets=[dataset], axes=axes, name="My Image")
-ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5")
-metadata = OMEZarrImageMetadata(ome=ome_metadata)
-
-# Validate dimension ordering (automatically done in Multiscale.__post_init__)
-validate_tczyx_axis_ordering(axes)
-
-# Convert to dictionary for zarr attrs
-attrs = metadata.to_dict()
+print("✅ Successfully created advanced.ome.zarr with optimized storage")
 ```
 
-### TCZYX Dimension Examples
-
-```python
-from ome_zarr_writer.schema_models import create_axes
-
-axes = create_axes("czyx", 0.1, 0.1, 0.3, unit="micrometer")  # Multichannel 3D
-axes = create_axes("tcyx", 0.2, 0.2, unit="micrometer")       # Time-series multichannel 2D
-axes = create_axes("tczyx", 0.25, 0.25, 0.5, unit="micrometer") # Full 5D
-
-# Example: Create CZYX (multichannel 3D) metadata
-# Input image shape: (3, 20, 256, 256) = (Channel, Z, Y, X)
-axes = create_axes("czyx", 0.1, 0.1, 0.3, unit="micrometer")  # x, y, z pixel sizes
-scale_transform = ScaleTransformation(scale=[1.0, 0.3, 0.1, 0.1])  # c, z, y, x
-```
-
-## TCZYX Dimension Ordering
-
-This library enforces **strict TCZYX dimension ordering** for input images:
 
 ### Valid Dimension Combinations
 
@@ -196,9 +188,9 @@ All input images must follow the **TCZYX** order where T (time), C (channel), an
 
 ```python
 # ❌ These will raise ValueError:
-create_xy_axes(...)      # X, Y - wrong order  
-create_zct_axes(...)     # Z, C, T - wrong order
-create_czdt_axes(...)    # Invalid 'D' dimension
+dims = ["x", "y"]        # X, Y - wrong order, should be Y, X
+dims = ["z", "c", "t"]   # Z, C, T - wrong order, should be T, C, Z
+dims = ["c", "z", "d"]   # Invalid 'D' dimension - not supported
 ```
 
 ### Space Axis Units
@@ -212,6 +204,19 @@ valid_units = [
     "megameter", "meter", "micrometer", "millimeter", "nanometer", 
     "parsec", "petameter", "picometer", "terameter", "yard", "yoctometer", 
     "yottameter", "zeptometer", "zettameter", "reference_frame"
+]
+```
+
+### Time Axis Units
+
+Time axes (T) support 16 validated units:
+
+```python
+valid_time_units = [
+    "attosecond", "centisecond", "day", "decisecond", "exasecond", 
+    "femtosecond", "gigasecond", "hectosecond", "hour", "kilosecond", 
+    "megasecond", "microsecond", "millisecond", "minute", "nanosecond", 
+    "second"
 ]
 ```
 
@@ -246,57 +251,31 @@ This will:
 
 ### Running tests
 
-Multiple ways to run tests:
-
 ```bash
-# Using pytest directly
+# Basic tests
 pytest
-
-# Using the test script
-./run_tests.sh
 
 # With coverage
 ./run_tests.sh cov
 
-# Fast tests only
-./run_tests.sh fast
-
 # All tests + examples
 ./run_tests.sh all
-
-# Using make (if available)
-make test
-make test-cov
 ```
 
 ### Code formatting and linting
 
 ```bash
-# Format code
+# Format and lint
 black src/ tests/ examples/
-
-# Lint code
 flake8 src/ tests/
-
-# Type checking
 mypy src/
-
-# Using make
-make format
-make lint
 ```
 
-## Contributing
-
-We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
-
-This package builds upon the excellent work of the [zarr-python](https://github.com/zarr-developers/zarr-python) community.
 ## Acknowledgments
 
 This package builds upon the excellent work of the [zarr-python](https://github.com/zarr-developers/zarr-python) community.

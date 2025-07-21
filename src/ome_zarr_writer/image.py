@@ -38,8 +38,6 @@ class OmeZarrImage:
         downscale_levels: Optional[int] = None,
         downscale_factor: int = 2,
         overwrite: bool = False,
-        chunks: Optional[Union[int, tuple, str]] = None,
-        shards: Optional[Union[int, tuple]] = None,
     ):
         """Initialize the OME-Zarr writer.
 
@@ -55,10 +53,6 @@ class OmeZarrImage:
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
             downscale_factor: Factor by which to downscale each level (default: 2).
             overwrite: Whether to overwrite existing files.
-            chunks: Chunk shape for zarr arrays. Can be an int, tuple, or "auto".
-                If None, zarr will determine chunk size automatically.
-            shards: Shard shape for zarr arrays (zarr v3 feature). Can be an int or tuple.
-                If None, no sharding is applied.
         """
         import warnings
 
@@ -72,8 +66,6 @@ class OmeZarrImage:
         self.coordinate_transformations = coordinate_transformations
         self.downscale_factor = downscale_factor
         self.overwrite = overwrite
-        self.chunks = chunks
-        self.shards = shards
 
         # Process and validate axis_units
         self.axes = self._process_axis_units(axis_units, dims, self.image.shape)
@@ -364,7 +356,11 @@ class OmeZarrImage:
 
         return axes
 
-    def write(self) -> None:
+    def write(
+        self,
+        chunks: Optional[Union[int, tuple, str]] = None,
+        shards: Optional[Union[int, tuple]] = None,
+    ) -> None:
         """Write the image as OME-Zarr.
 
         Creates a complete OME-Zarr file with:
@@ -372,6 +368,12 @@ class OmeZarrImage:
         - Proper OME-Zarr 0.5 metadata
         - Coordinate transformations for each level
         - Zarr arrays for each resolution level
+
+        Args:
+            chunks: Chunk shape for zarr arrays. Can be an int, tuple, or "auto".
+                If None, zarr will determine chunk size automatically.
+            shards: Shard shape for zarr arrays (zarr v3 feature). Can be an int or tuple.
+                If None, no sharding is applied.
         """
         import shutil
 
@@ -409,12 +411,12 @@ class OmeZarrImage:
             }
 
             # Add chunks parameter if specified
-            if self.chunks is not None:
-                zarr_kwargs["chunks"] = self.chunks
+            if chunks is not None:
+                zarr_kwargs["chunks"] = chunks
 
             # Add shards parameter if specified (zarr v3 feature)
-            if self.shards is not None:
-                zarr_kwargs["shards"] = self.shards
+            if shards is not None:
+                zarr_kwargs["shards"] = shards
 
             # Create zarr array for this level and store the data
             zarr_array = root_group.create_array(**zarr_kwargs)

@@ -217,17 +217,19 @@ class TestWriteMethod:
 
         output_path = tmp_path / "test_chunks_shards.zarr"
 
-        # Create OME-Zarr image with custom chunks and shards
+        # Create OME-Zarr image
         ome_zarr_image = OmeZarrImage(
             path=output_path,
             image=image,
             dims=dims,
             axis_units=axis_units,
             overwrite=True,
+        )
+        # Write with custom chunks and shards
+        ome_zarr_image.write(
             chunks=(1, 32, 32),  # Custom chunk size
             shards=(2, 64, 64),  # Custom shard size
         )
-        ome_zarr_image.write()
 
         # Verify the chunks and shards were applied
         group = zarr.open_group(str(output_path), mode="r")

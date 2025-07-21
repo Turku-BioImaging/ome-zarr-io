@@ -13,7 +13,7 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Integration with Zarr version 3.
 - Type-safe Python dataclasses implementing the OME-Zarr schema
 - JSON Schema validation for metadata compliance
-- Strict TCZYX dimension ordering - Input images always follow Time-Channel-Z-Y-X order (T, C, Z optional)
+- Strict TCZYX dimension ordering
 - Space axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
 - Time axis unit validation
 

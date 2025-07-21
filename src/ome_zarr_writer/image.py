@@ -15,6 +15,7 @@ from .schema_models import (
     Multiscale,
     OMEMetadata,
     OMEZarrImageMetadata,
+    Omero,
 )
 
 
@@ -36,6 +37,7 @@ class OmeZarrImage:
         downscale_levels: Optional[int] = None,
         downscale_factor: int = 2,
         overwrite: bool = False,
+        omero_metadata: Optional[Omero] = None,
     ):
         """Initialize the OME-Zarr writer.
 
@@ -56,6 +58,8 @@ class OmeZarrImage:
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
             downscale_factor: Factor by which to downscale each level (default: 2).
             overwrite: Whether to overwrite existing files.
+            omero_metadata: Optional OMERO metadata for channel display configuration.
+                Must be an Omero object containing channel information for image visualization.
         """
         import warnings
 
@@ -121,6 +125,9 @@ class OmeZarrImage:
                 downscale_levels = max_levels
 
         self.downscale_levels = downscale_levels
+
+        # Store OMERO metadata
+        self.omero_metadata = omero_metadata
 
     def _create_downscaled_arrays(self) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.
@@ -561,7 +568,11 @@ class OmeZarrImage:
         )
 
         # Create OME metadata
-        ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5")
+        ome_metadata = OMEMetadata(
+            multiscales=[multiscale], 
+            version="0.5",
+            omero=self.omero_metadata
+        )
 
         # Create final metadata container
         metadata = OMEZarrImageMetadata(ome=ome_metadata)

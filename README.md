@@ -193,44 +193,35 @@ dims = ["z", "c", "t"]   # Z, C, T - wrong order, should be T, C, Z
 dims = ["c", "z", "d"]   # Invalid 'D' dimension - not supported
 ```
 
-### Space Axis Units
-
-Space axes (X, Y, Z) support 26 validated units:
-
-```python
-valid_units = [
-    "angstrom", "attometer", "centimeter", "decimeter", "exameter", 
-    "femtometer", "foot", "gigameter", "hectometer", "inch", "kilometer", 
-    "megameter", "meter", "micrometer", "millimeter", "nanometer", 
-    "parsec", "petameter", "picometer", "terameter", "yard", "yoctometer", 
-    "yottameter", "zeptometer", "zettameter", "reference_frame"
-]
-```
-
-### Time Axis Units
-
-Time axes (T) support 16 validated units:
-
-```python
-valid_time_units = [
-    "attosecond", "centisecond", "day", "decisecond", "exasecond", 
-    "femtosecond", "gigasecond", "hectosecond", "hour", "kilosecond", 
-    "megasecond", "microsecond", "millisecond", "minute", "nanosecond", 
-    "second"
-]
-```
-
 ## Examples
 
-See the `examples/` directory for comprehensive usage examples:
+The `examples/` directory contains **4 comprehensive examples** designed for progressive learning:
 
-- `examples/basic_example.py` - Basic writing operations
-- `examples/unified_create_axes_example.py` - Single function API demonstration  
-- `examples/tczyx_ordering_example.py` - Complete TCZYX dimension ordering demonstration
-- `examples/schema_example.py` - Complete schema dataclass examples  
-- `examples/cyx_example.py` - Multichannel image examples (CYX, CZYX, TYX, TCYX)
-- `examples/unit_validation_example.py` - Space axis unit validation demo
-- `examples/integration_example.py` - Integration with existing code
+- **`examples/getting_started.py`** - **Start here!** Essential usage patterns
+  - Simple 2D and 3D image writing
+  - Time-lapse data handling
+  - Basic compression and chunking
+
+- **`examples/advanced_features.py`** - Optimization and performance features
+  - Compression algorithm comparison
+  - Custom chunking strategies
+  - Multiscale pyramid optimization
+  - Performance considerations
+
+- **`examples/dimension_examples.py`** - Complete axis and dimension guide
+  - All supported dimension orders (2D to 5D)
+  - Spatial and temporal units
+  - Scale transformations
+  - Coordinate systems
+
+- **`examples/metadata_examples.py`** - Advanced metadata capabilities
+  - Metadata configuration
+  - Multichannel setups
+  - Validation examples
+
+**Quick start:** Run `python examples/getting_started.py` to see essential usage patterns.
+
+For the complete migration guide and detailed organization, see [`examples/README.md`](examples/README.md).
 
 ## Development
 

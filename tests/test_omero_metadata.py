@@ -6,8 +6,8 @@ import pytest
 from pathlib import Path
 import zarr
 
-from src.ome_zarr_writer.image import OmeZarrImage
-from src.ome_zarr_writer.schema_models import (
+from ome_zarr_writer.image import OmeZarrImage
+from ome_zarr_writer.schema_models import (
     Omero,
     Channel,
     Window,

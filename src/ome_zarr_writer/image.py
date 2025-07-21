@@ -35,7 +35,7 @@ class OmeZarrImage:
         axis_units: Union[List[Axis], Dict[str, Any]],
         scale_transformations: Optional[Dict[str, Any]] = None,
         downscale_levels: Optional[int] = None,
-        downscale_factor: int = 2,
+        downscale_factor: float = 2.0,
         overwrite: bool = False,
         omero_metadata: Optional[Omero] = None,
     ):
@@ -56,7 +56,7 @@ class OmeZarrImage:
                 Units are determined by the axis_units parameter. Scale values will be 
                 automatically adjusted for each downscale level.
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
-            downscale_factor: Factor by which to downscale each level (default: 2).
+            downscale_factor: Factor by which to downscale each level (default: 2.0).
             overwrite: Whether to overwrite existing files.
             omero_metadata: Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
@@ -82,8 +82,8 @@ class OmeZarrImage:
         )
 
         # Validate downscale_factor
-        if downscale_factor < 2:
-            raise ValueError(f"downscale_factor must be >= 2, got {downscale_factor}")
+        if downscale_factor <= 1.0:
+            raise ValueError(f"downscale_factor must be > 1.0, got {downscale_factor}")
 
         # Validate downscale_levels against image dimensions
         if downscale_levels is not None and downscale_levels > 0:
@@ -94,7 +94,7 @@ class OmeZarrImage:
             max_levels = 0
             test_size = min_spatial_dim
             while test_size >= downscale_factor:
-                test_size = test_size // downscale_factor
+                test_size = test_size / downscale_factor
                 max_levels += 1
 
             if downscale_levels > max_levels:
@@ -102,11 +102,13 @@ class OmeZarrImage:
                 suggested_factor = downscale_factor
 
                 # Try to find a smaller factor that would work
-                for factor in range(2, downscale_factor):
+                for factor in [1.5, 1.25, 1.1]:
+                    if factor >= downscale_factor:
+                        continue
                     test_levels = 0
                     test_size = min_spatial_dim
                     while test_size >= factor:
-                        test_size = test_size // factor
+                        test_size = test_size / factor
                         test_levels += 1
                     if test_levels >= downscale_levels:
                         suggested_factor = factor
@@ -150,8 +152,8 @@ class OmeZarrImage:
         for level in range(1, self.downscale_levels + 1):
             # Check if Y or X dimensions are too small to downscale further
             if (
-                current_array.shape[-2] < self.downscale_factor
-                or current_array.shape[-1] < self.downscale_factor
+                current_array.shape[-2] / self.downscale_factor < 1
+                or current_array.shape[-1] / self.downscale_factor < 1
             ):
                 # Stop creating more levels if dimensions become too small
                 break
@@ -188,16 +190,16 @@ class OmeZarrImage:
 
             # Calculate the expected output shape
             new_shape = list(current_array.shape)
-            new_shape[-2] = new_shape[-2] // self.downscale_factor  # Y dimension
-            new_shape[-1] = new_shape[-1] // self.downscale_factor  # X dimension
+            new_shape[-2] = int(new_shape[-2] / self.downscale_factor)  # Y dimension
+            new_shape[-1] = int(new_shape[-1] / self.downscale_factor)  # X dimension
 
             # Calculate new chunk sizes (also downscaled for Y and X dimensions)
             new_chunks = list(filtered_array.chunks)
             new_chunks[-2] = tuple(
-                chunk_size // self.downscale_factor for chunk_size in new_chunks[-2]
+                max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-2]
             )
             new_chunks[-1] = tuple(
-                chunk_size // self.downscale_factor for chunk_size in new_chunks[-1]
+                max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-1]
             )
 
             try:
@@ -246,7 +248,7 @@ class OmeZarrImage:
             max_possible_levels = 0
             test_size = min_spatial_dim
             while test_size >= self.downscale_factor:
-                test_size = test_size // self.downscale_factor
+                test_size = test_size / self.downscale_factor
                 max_possible_levels += 1
 
             num_levels += min(self.downscale_levels, max_possible_levels)

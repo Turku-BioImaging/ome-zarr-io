@@ -2,12 +2,13 @@
 
 from ome_zarr_writer import OMEZarrValidator
 
+
 def main():
     """Demonstrate JSON schema validation for OME-Zarr metadata."""
-    
+
     # Initialize the validator
     validator = OMEZarrValidator()
-    
+
     # Example 1: Valid image metadata
     valid_image_metadata = {
         "ome": {
@@ -18,30 +19,24 @@ def main():
                     "name": "example_image",
                     "axes": [
                         {"name": "y", "type": "space", "unit": "micrometer"},
-                        {"name": "x", "type": "space", "unit": "micrometer"}
+                        {"name": "x", "type": "space", "unit": "micrometer"},
                     ],
                     "datasets": [
                         {
                             "path": "0",
                             "coordinateTransformations": [
-                                {
-                                    "type": "scale",
-                                    "scale": [1.0, 1.0]
-                                }
-                            ]
+                                {"type": "scale", "scale": [1.0, 1.0]}
+                            ],
                         }
                     ],
                     "coordinateTransformations": [
-                        {
-                            "type": "scale",
-                            "scale": [0.5, 0.5]
-                        }
-                    ]
+                        {"type": "scale", "scale": [0.5, 0.5]}
+                    ],
                 }
-            ]
+            ],
         }
     }
-    
+
     # Example 2: Invalid image metadata (missing required fields)
     invalid_image_metadata = {
         "ome": {
@@ -49,9 +44,9 @@ def main():
             # Missing multiscales - this should cause validation to fail
         }
     }
-    
+
     print("=== OME-Zarr JSON Schema Validation Examples ===\\n")
-    
+
     # Test valid metadata
     print("1. Testing valid image metadata:")
     try:
@@ -59,9 +54,9 @@ def main():
         print(f"   ✓ Validation passed: {is_valid}")
     except Exception as e:
         print(f"   ✗ Validation failed: {e}")
-    
+
     print()
-    
+
     # Test invalid metadata
     print("2. Testing invalid image metadata:")
     try:
@@ -69,9 +64,9 @@ def main():
         print(f"   ✓ Validation passed: {is_valid}")
     except Exception as e:
         print(f"   ✗ Validation failed: {e}")
-    
+
     print()
-    
+
     # Get validation errors without raising exception
     print("3. Getting validation errors for invalid metadata:")
     errors = validator.get_validation_errors(invalid_image_metadata, "image")
@@ -81,18 +76,19 @@ def main():
             print(f"   - {error}")
     else:
         print("   No validation errors found")
-    
+
     print()
-    
+
     # Example of validating against different schema types
     print("4. Available schema types for validation:")
     schema_types = ["image", "plate", "well", "label", "ome_zarr"]
     for schema_type in schema_types:
         print(f"   - {schema_type}")
-    
+
     print()
     print("=== Usage in your code ===")
-    print("""
+    print(
+        """
 # Import the validator
 from ome_zarr_writer import OMEZarrValidator
 
@@ -112,7 +108,9 @@ if not errors:
     print("Metadata is valid!")
 else:
     print("Validation errors:", errors)
-    """)
+    """
+    )
+
 
 if __name__ == "__main__":
     main()

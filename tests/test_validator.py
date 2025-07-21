@@ -11,7 +11,7 @@ from ome_zarr_writer.schema_models import (
     Multiscale,
     Dataset,
     ScaleTransformation,
-    create_2d_axes
+    create_2d_axes,
 )
 
 
@@ -48,32 +48,23 @@ def test_validate_valid_image_metadata(validator, valid_image_metadata):
 def test_validate_invalid_metadata_missing_ome(validator):
     """Test validation fails for metadata missing OME section."""
     invalid_metadata = {"invalid": "data"}
-    
+
     with pytest.raises(ValidationError):
         validator.validate_image_metadata(invalid_metadata)
 
 
 def test_validate_invalid_metadata_missing_version(validator):
     """Test validation fails for metadata missing version."""
-    invalid_metadata = {
-        "ome": {
-            "multiscales": []
-        }
-    }
-    
+    invalid_metadata = {"ome": {"multiscales": []}}
+
     with pytest.raises(ValidationError):
         validator.validate_image_metadata(invalid_metadata)
 
 
 def test_validate_invalid_metadata_empty_multiscales(validator):
     """Test validation fails for empty multiscales."""
-    invalid_metadata = {
-        "ome": {
-            "multiscales": [],
-            "version": "0.5"
-        }
-    }
-    
+    invalid_metadata = {"ome": {"multiscales": [], "version": "0.5"}}
+
     with pytest.raises(ValidationError):
         validator.validate_image_metadata(invalid_metadata)
 
@@ -121,12 +112,12 @@ def test_schema_dataclasses_integration_with_validator(validator):
     multiscale = Multiscale(datasets=[dataset], axes=axes, name="Test Image")
     ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5")
     metadata = OMEZarrImageMetadata(ome=ome_metadata)
-    
+
     # Convert to dict and validate
     attrs_dict = metadata.to_dict()
     result = validator.validate_image_metadata(attrs_dict)
     assert result is True
-    
+
     # Check that no validation errors are present
     errors = validator.get_validation_errors(attrs_dict, "image")
     assert len(errors) == 0

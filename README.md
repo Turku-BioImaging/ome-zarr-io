@@ -23,12 +23,6 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 
 ## Installation
 
-### From PyPI (recommended)
-
-```bash
-pip install ome-zarr-writer
-```
-
 ### From source
 
 ```bash
@@ -43,23 +37,20 @@ pip install -e .
 
 ```python
 import numpy as np
-from ome_zarr_writer import OMEZarrImage
+from ome_zarr_writer import write_ome_zarr
+from ome_zarr_writer.schema_models import create_axes
 
 # Create sample image data
 image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint8)
 
-# Initialize writer
-writer = OMEZarrImage(
+# Create axes for 2D image
+axes = create_axes("yx", 0.5, 0.5, unit="micrometer")
+
+# Write image
+write_ome_zarr(
     path="output.zarr",
     image=image,
-    dims=["y", "x"]
-)
-
-# Write image with pixel size information
-writer.write(
-    image=image,
-    pixel_size=(0.5, 0.5),  # micrometers per pixel
-    units=["micrometer", "micrometer"]
+    axes=axes
 )
 ```
 
@@ -72,17 +63,15 @@ from ome_zarr_writer.schema_models import (
     Multiscale,
     Dataset,
     ScaleTransformation,
-    create_yx_axes,   # 2D spatial
-    create_cyx_axes,  # Multichannel 2D
-    create_tczyx_axes, # Full 5D (Time-Channel-Z-Y-X)
+    create_axes,
     validate_tczyx_axis_ordering
 )
 
-# All axis creation functions follow strict TCZYX ordering
+# All axis creation uses unified create_axes function
 # Valid combinations: YX, ZYX, CYX, CZYX, TYX, TZYX, TCYX, TCZYX
 
 # Create metadata using type-safe dataclasses
-axes = create_yx_axes(0.1, 0.1, unit="micrometer")
+axes = create_axes("yx", 0.1, 0.1, unit="micrometer")
 scale_transform = ScaleTransformation(scale=[0.1, 0.1])
 dataset = Dataset(path="0", coordinateTransformations=[scale_transform])
 multiscale = Multiscale(datasets=[dataset], axes=axes, name="My Image")
@@ -99,28 +88,16 @@ attrs = metadata.to_dict()
 ### TCZYX Dimension Examples
 
 ```python
-from ome_zarr_writer.schema_models import (
-    create_axes,       # NEW: Single unified function!
-    create_yx_axes,    # YX: 2D spatial
-    create_zyx_axes,   # ZYX: 3D spatial  
-    create_cyx_axes,   # CYX: Multichannel 2D
-    create_czyx_axes,  # CZYX: Multichannel 3D
-    create_tyx_axes,   # TYX: Time-series 2D
-    create_tzyx_axes,  # TZYX: Time-series 3D
-    create_tcyx_axes,  # TCYX: Time-series multichannel 2D
-    create_tczyx_axes, # TCZYX: Time-series multichannel 3D (maximum)
-    create_scale_transformation
-)
+from ome_zarr_writer.schema_models import create_axes
 
-# NEW UNIFIED API - Single function for all dimension combinations:
 axes = create_axes("czyx", 0.1, 0.1, 0.3, unit="micrometer")  # Multichannel 3D
 axes = create_axes("tcyx", 0.2, 0.2, unit="micrometer")       # Time-series multichannel 2D
 axes = create_axes("tczyx", 0.25, 0.25, 0.5, unit="micrometer") # Full 5D
 
 # Example: Create CZYX (multichannel 3D) metadata
 # Input image shape: (3, 20, 256, 256) = (Channel, Z, Y, X)
-axes = create_czyx_axes(0.1, 0.1, 0.3, unit="micrometer")  # x, y, z pixel sizes
-scale_transform = create_scale_transformation([1.0, 0.3, 0.1, 0.1])  # c, z, y, x
+axes = create_axes("czyx", 0.1, 0.1, 0.3, unit="micrometer")  # x, y, z pixel sizes
+scale_transform = ScaleTransformation(scale=[1.0, 0.3, 0.1, 0.1])  # c, z, y, x
 ```
 
 ## TCZYX Dimension Ordering
@@ -136,7 +113,7 @@ All input images must follow the **TCZYX** order where T (time), C (channel), an
 | **YX** | Y, X | 2D grayscale image | `(512, 512)` |
 | **ZYX** | Z, Y, X | 3D confocal stack | `(20, 256, 256)` |
 | **CYX** | C, Y, X | RGB/multichannel 2D | `(3, 512, 512)` |
-| **CZYX** | C, Z, Y, X | Multichannel 3D stack | `(2, 15, 256, 256)` |
+| **CZYX** | C, Z, Y, X | Multiscale 3D stack | `(2, 15, 256, 256)` |
 | **TYX** | T, Y, X | Time-lapse 2D | `(100, 256, 256)` |
 | **TZYX** | T, Z, Y, X | 4D live imaging | `(50, 10, 128, 128)` |
 | **TCYX** | T, C, Y, X | Time-lapse multichannel | `(50, 2, 128, 128)` |
@@ -163,39 +140,6 @@ valid_units = [
     "parsec", "petameter", "picometer", "terameter", "yard", "yoctometer", 
     "yottameter", "zeptometer", "zettameter", "reference_frame"
 ]
-```
-
-### Validation
-
-```python
-from ome_zarr_writer.schema_models import validate_tczyx_axis_ordering, create_axes
-
-# Automatic validation in unified function
-axes = create_axes("tczyx", 0.1, 0.1, 0.3, unit="micrometer")  # ✓ Valid
-
-# Manual validation
-validate_tczyx_axis_ordering(axes)  # Raises ValueError if invalid
-```
-
-### Complete Example
-
-```python
-# Run the comprehensive examples:
-python examples/unified_create_axes_example.py  # NEW: Unified API demonstration
-python examples/tczyx_ordering_example.py       # Complete TCZYX examples
-```
-
-### Validation
-
-```python
-from ome_zarr_writer import OMEZarrValidator
-
-# Validate metadata against OME-Zarr schema
-validator = OMEZarrValidator()
-is_valid = validator.validate_image_metadata(attrs)
-
-# Get detailed validation errors
-errors = validator.get_validation_errors(attrs, "image")
 ```
 
 ## Examples
@@ -279,4 +223,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-This package builds upon the excellent work of the [ome-zarr-py](https://github.com/ome/ome-zarr-py) and [zarr-python](https://github.com/zarr-developers/zarr-python) communities.
+This package builds upon the excellent work of the [zarr-python](https://github.com/zarr-developers/zarr-python) community.
+## Acknowledgments
+
+This package builds upon the excellent work of the [zarr-python](https://github.com/zarr-developers/zarr-python) community.

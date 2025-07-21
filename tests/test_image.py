@@ -33,12 +33,9 @@ def test_init_with_numpy_array(temp_dir, sample_2d_image):
     axis_units = {"unit": "micrometer"}
 
     writer = OmeZarrImage(
-        path=path,
-        image=sample_2d_image,
-        dims=dims,
-        axis_units=axis_units
+        path=path, image=sample_2d_image, dims=dims, axis_units=axis_units
     )
-    
+
     assert writer.path == Path(path)
     assert isinstance(writer.image, da.Array)  # Should be converted to dask
     assert writer.dims == dims
@@ -52,13 +49,8 @@ def test_init_with_dask_array(temp_dir, sample_2d_image):
     axis_units = {"unit": "micrometer"}
     dask_image = da.from_array(sample_2d_image, chunks="auto")
 
-    writer = OmeZarrImage(
-        path=path,
-        image=dask_image,
-        dims=dims,
-        axis_units=axis_units
-    )
-    
+    writer = OmeZarrImage(path=path, image=dask_image, dims=dims, axis_units=axis_units)
+
     assert writer.path == Path(path)
     assert isinstance(writer.image, da.Array)
     assert writer.dims == dims
@@ -66,22 +58,27 @@ def test_init_with_dask_array(temp_dir, sample_2d_image):
 
 def test_init_with_coordinate_transformations(temp_dir, sample_2d_image):
     """Test initialization with coordinate transformations."""
-    from ome_zarr_writer.schema_models import ScaleTransformation, TranslationTransformation
+    from ome_zarr_writer.schema_models import (
+        ScaleTransformation,
+        TranslationTransformation,
+    )
     from typing import List, Union
-    
+
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     axis_units = {"unit": "micrometer"}
-    coord_transforms: List[Union[ScaleTransformation, TranslationTransformation]] = [ScaleTransformation(scale=[0.1, 0.1])]
+    coord_transforms: List[Union[ScaleTransformation, TranslationTransformation]] = [
+        ScaleTransformation(scale=[0.1, 0.1])
+    ]
 
     writer = OmeZarrImage(
         path=path,
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        coordinate_transformations=coord_transforms
+        coordinate_transformations=coord_transforms,
     )
-    
+
     assert writer.coordinate_transformations == coord_transforms
 
 
@@ -97,9 +94,9 @@ def test_init_with_downscale_levels(temp_dir, sample_2d_image):
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        downscale_levels=downscale_levels
+        downscale_levels=downscale_levels,
     )
-    
+
     assert writer.downscale_levels == downscale_levels
 
 
@@ -114,9 +111,9 @@ def test_init_with_overwrite_flag(temp_dir, sample_2d_image):
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        overwrite=True
+        overwrite=True,
     )
-    
+
     assert writer.overwrite is True
 
 
@@ -127,12 +124,9 @@ def test_path_handling_string_input(sample_2d_image):
     axis_units = {"unit": "micrometer"}
 
     writer = OmeZarrImage(
-        path=path_str,
-        image=sample_2d_image,
-        dims=dims,
-        axis_units=axis_units
+        path=path_str, image=sample_2d_image, dims=dims, axis_units=axis_units
     )
-    
+
     assert isinstance(writer.path, Path)
     assert str(writer.path) == path_str
 
@@ -148,14 +142,14 @@ def test_create_downscaled_arrays_basic_functionality(temp_dir, sample_2d_image)
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        downscale_levels=2
+        downscale_levels=2,
     )
-    
+
     arrays = writer._create_downscaled_arrays()
-    
+
     # Should have 3 levels: original + 2 downscaled
     assert len(arrays) == 3
-    
+
     # Check shapes
     assert arrays[0].shape == sample_2d_image.shape  # Original
     assert arrays[1].shape == (50, 50)  # 2x downscaled
@@ -173,11 +167,11 @@ def test_create_downscaled_arrays_no_downscaling(temp_dir, sample_2d_image):
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        downscale_levels=None
+        downscale_levels=None,
     )
-    
+
     arrays = writer._create_downscaled_arrays()
-    
+
     # Should have only 1 level: original
     assert len(arrays) == 1
     assert arrays[0].shape == sample_2d_image.shape
@@ -190,15 +184,12 @@ def test_write_method_works(temp_dir, sample_2d_image):
     axis_units = {"unit": "micrometer"}
 
     writer = OmeZarrImage(
-        path=path,
-        image=sample_2d_image,
-        dims=dims,
-        axis_units=axis_units
+        path=path, image=sample_2d_image, dims=dims, axis_units=axis_units
     )
-    
+
     # Should not raise an exception
     writer.write()
-    
+
     # Verify the file was created
     assert path.exists()
 
@@ -210,12 +201,9 @@ def test_3d_image_initialization(temp_dir, sample_3d_image):
     axis_units = {"unit": "micrometer"}
 
     writer = OmeZarrImage(
-        path=path,
-        image=sample_3d_image,
-        dims=dims,
-        axis_units=axis_units
+        path=path, image=sample_3d_image, dims=dims, axis_units=axis_units
     )
-    
+
     assert writer.image.shape == sample_3d_image.shape
     assert writer.dims == dims
     assert len(writer.axes) == 3
@@ -229,12 +217,9 @@ def test_multichannel_image_dims(temp_dir):
     axis_units = {"unit": "micrometer"}
 
     writer = OmeZarrImage(
-        path=path,
-        image=multichannel_image,
-        dims=dims,
-        axis_units=axis_units
+        path=path, image=multichannel_image, dims=dims, axis_units=axis_units
     )
-    
+
     assert writer.image.shape == multichannel_image.shape
     assert writer.dims == dims
     assert len(writer.axes) == 3

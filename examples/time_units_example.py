@@ -15,7 +15,7 @@ axes_seconds = create_axes(
     x_size=0.1,  # 0.1 micrometer pixel size
     y_size=0.1,  # 0.1 micrometer pixel size
     time_unit="second",
-    unit="micrometer"
+    unit="micrometer",
 )
 print(f"Time axis: {axes_seconds[0].name} (unit: {axes_seconds[0].unit})")
 print(f"Y axis: {axes_seconds[1].name} (unit: {axes_seconds[1].unit})")
@@ -29,7 +29,7 @@ axes_days = create_axes(
     x_size=1.0,  # 1.0 millimeter pixel size
     y_size=1.0,  # 1.0 millimeter pixel size
     time_unit="day",
-    unit="millimeter"
+    unit="millimeter",
 )
 print(f"Time axis: {axes_days[0].name} (unit: {axes_days[0].unit})")
 print(f"Channel axis: {axes_days[1].name}")
@@ -43,9 +43,9 @@ axes_ms = create_axes(
     axes="tczyx",
     x_size=0.05,  # 0.05 nanometer pixel size
     y_size=0.05,  # 0.05 nanometer pixel size
-    z_size=0.1,   # 0.1 nanometer z-step
+    z_size=0.1,  # 0.1 nanometer z-step
     time_unit="millisecond",
-    unit="nanometer"
+    unit="nanometer",
 )
 print(f"Time axis: {axes_ms[0].name} (unit: {axes_ms[0].unit})")
 print(f"Channel axis: {axes_ms[1].name}")
@@ -68,7 +68,7 @@ try:
         x_size=0.1,
         y_size=0.1,
         time_unit="invalid_unit",  # This will raise an error
-        unit="micrometer"
+        unit="micrometer",
     )
 except ValueError as e:
     print(f"Error caught: {e}")

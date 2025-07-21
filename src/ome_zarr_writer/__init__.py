@@ -21,14 +21,14 @@ from .schema_models import (
     create_scale_transformation,
     validate_tczyx_axis_ordering,
     VALID_TIME_UNITS,
-    VALID_SPACE_UNITS
+    VALID_SPACE_UNITS,
 )
 
 __all__ = [
-    "OmeZarrImage", 
+    "OmeZarrImage",
     "OMEZarrValidator",
     "OMEZarrImageMetadata",
-    "OMEMetadata", 
+    "OMEMetadata",
     "Multiscale",
     "Dataset",
     "Axis",
@@ -41,5 +41,5 @@ __all__ = [
     "create_scale_transformation",
     "validate_tczyx_axis_ordering",
     "VALID_TIME_UNITS",
-    "VALID_SPACE_UNITS"
+    "VALID_SPACE_UNITS",
 ]

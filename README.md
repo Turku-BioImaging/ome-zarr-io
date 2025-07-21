@@ -5,7 +5,7 @@ Write valid OME-Zarr 0.5 multiscale images
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml)
 [![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 
-A Python package for writing valid OME-Zarr 0.5 multiscale images. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr format.
+A Python package for writing valid OME-Zarr 0.5 multiscale images. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format.
 
 ## Features
 
@@ -13,9 +13,9 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Type-safe Python dataclasses implementing the OME-Zarr schema
 - JSON Schema validation for metadata compliance
 - Support for various image formats and data types
-- **Strict TCZYX dimension ordering** - Input images always follow Time-Channel-Z-Y-X order (T, C, Z optional)
-- **Multichannel image support** (CYX, CZYX, TYX, TCYX, TCZYX dimensions)
-- **Space axis unit validation** (26 supported units: angstrom, micrometer, meter, etc.)
+- Strict TCZYX dimension ordering - Input images always follow Time-Channel-Z-Y-X order (T, C, Z optional)
+- Multichannel image support (CYX, CZYX, TYX, TCYX, TCZYX dimensions)
+- Space axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
 - Efficient handling of large image datasets
 - Integration with the zarr ecosystem
 - OMERO display settings support
@@ -28,6 +28,16 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 git clone https://github.com/Turku-BioImaging/ome-zarr-writer.git
 cd ome-zarr-writer
 pip install -e .
+```
+
+### From pip requirements.txt
+
+```bash
+# Add to your requirements.txt file
+git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
+
+# Then install with pip
+pip install -r requirements.txt
 ```
 
 ## Quick Start

@@ -3,7 +3,6 @@
 from typing import List, Union
 import numpy as np
 import zarr
-from pathlib import Path
 
 from ome_zarr_writer.image import OmeZarrImage
 from ome_zarr_writer.schema_models import ScaleTransformation, TranslationTransformation

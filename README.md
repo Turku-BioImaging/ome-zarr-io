@@ -224,14 +224,13 @@ valid_time_units = [
 
 See the `examples/` directory for comprehensive usage examples:
 
-- `examples/unified_create_axes_example.py` - **NEW**: Single function API demonstration  
+- `examples/basic_example.py` - Basic writing operations
+- `examples/unified_create_axes_example.py` - Single function API demonstration  
 - `examples/tczyx_ordering_example.py` - Complete TCZYX dimension ordering demonstration
 - `examples/schema_example.py` - Complete schema dataclass examples  
 - `examples/cyx_example.py` - Multichannel image examples (CYX, CZYX, TYX, TCYX)
 - `examples/unit_validation_example.py` - Space axis unit validation demo
 - `examples/integration_example.py` - Integration with existing code
-- `examples/basic_example.py` - Basic writing operations
-- `examples/validation_example.py` - Validation workflows
 
 ## Development
 

@@ -6,12 +6,13 @@ This example demonstrates how to:
 1. Create sample CZYX image data (Channel, Z, Y, X)
 2. Initialize the OME-Zarr image with proper axis units
 3. Write a complete OME-Zarr file with multiscale pyramids
-4. Configure chunking, sharding, and compression options
+4. Configure chunking, sharding, and compression using the write() method
 """
 
 import numpy as np
 from pathlib import Path
 from ome_zarr_writer import OmeZarrImage
+from zarr.codecs import BloscCodec, ZstdCodec
 
 
 def create_basic_example():
@@ -62,7 +63,7 @@ def create_chunked_example():
 
     # Custom chunking strategy - optimize for different access patterns
     # Chunk size should balance memory usage and I/O performance
-    chunk_shape = (1, 4, 256, 256)  # (C, Z, Y, X) - good for z-stack access
+    chunks = (1, 4, 256, 256)  # (C, Z, Y, X) - good for z-stack access
     
     ome_zarr_image = OmeZarrImage(
         path=output_path,
@@ -70,14 +71,13 @@ def create_chunked_example():
         dims=dims,
         axis_units=axis_units,
         downscale_levels=3,
-        chunk_shape=chunk_shape,
         overwrite=True,
     )
 
     print(f"Image shape: {image.shape}")
-    print(f"Chunk shape: {chunk_shape}")
+    print(f"Chunk shape: {chunks}")
     print(f"Writing chunked example to: {output_path}")
-    ome_zarr_image.write()
+    ome_zarr_image.write(chunks=chunks)
     print("✓ Chunked example completed")
 
 
@@ -96,11 +96,7 @@ def create_compressed_example():
     axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
     # Configure compression - blosc is fast and effective for scientific data
-    compression_config = {
-        "compressor": "blosc",
-        "compression_level": 5,  # Balance between speed and compression ratio
-        "shuffle": True,  # Improve compression for scientific data
-    }
+    compression_codec = BloscCodec(cname="lz4", clevel=5, shuffle="shuffle")
     
     ome_zarr_image = OmeZarrImage(
         path=output_path,
@@ -108,15 +104,13 @@ def create_compressed_example():
         dims=dims,
         axis_units=axis_units,
         downscale_levels=3,
-        chunk_shape=(1, 5, 128, 128),  # Smaller chunks work better with compression
-        compression=compression_config,
         overwrite=True,
     )
 
     print(f"Image shape: {image.shape}")
-    print(f"Compression: {compression_config}")
+    print(f"Compression: {compression_codec}")
     print(f"Writing compressed example to: {output_path}")
-    ome_zarr_image.write()
+    ome_zarr_image.write(chunks=(1, 5, 128, 128), compressors=compression_codec)
     print("✓ Compressed example completed")
 
 
@@ -135,12 +129,10 @@ def create_sharded_example():
     axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
     # Sharding configuration - groups chunks into larger files for better I/O
-    shard_config = {
-        "shard_shape": (1, 5, 512, 512),  # Size of each shard
-        "index_location": "start",  # Where to store the index
-    }
+    shard_shape = (1, 5, 512, 512)  # Size of each shard
     
     chunk_shape = (1, 5, 256, 256)  # Should be smaller than or equal to shard_shape
+    compression_codec = ZstdCodec(level=3)
     
     ome_zarr_image = OmeZarrImage(
         path=output_path,
@@ -148,17 +140,14 @@ def create_sharded_example():
         dims=dims,
         axis_units=axis_units,
         downscale_levels=2,
-        chunk_shape=chunk_shape,
-        sharding=shard_config,
-        compression={"compressor": "zstd", "compression_level": 3},
         overwrite=True,
     )
 
     print(f"Image shape: {image.shape}")
     print(f"Chunk shape: {chunk_shape}")
-    print(f"Shard config: {shard_config}")
+    print(f"Shard shape: {shard_shape}")
     print(f"Writing sharded example to: {output_path}")
-    ome_zarr_image.write()
+    ome_zarr_image.write(chunks=chunk_shape, shards=shard_shape, compressors=compression_codec)
     print("✓ Sharded example completed")
 
 
@@ -184,15 +173,8 @@ def create_optimized_example():
 
     # Optimized configuration for large datasets
     chunk_shape = (1, 1, 1024, 1024)  # Large chunks for better I/O with large data
-    shard_config = {
-        "shard_shape": (1, 10, 2048, 2048),
-        "index_location": "start",
-    }
-    compression_config = {
-        "compressor": "zstd",  # Good compression ratio and speed
-        "compression_level": 3,  # Fast compression
-        "shuffle": True,
-    }
+    shard_shape = (1, 10, 2048, 2048)
+    compression_codec = ZstdCodec(level=3)
     
     ome_zarr_image = OmeZarrImage(
         path=output_path,
@@ -200,18 +182,15 @@ def create_optimized_example():
         dims=dims,
         axis_units=axis_units,
         downscale_levels=4,  # More levels for large images
-        chunk_shape=chunk_shape,
-        sharding=shard_config,
-        compression=compression_config,
         overwrite=True,
     )
 
     print(f"Image shape: {image.shape}")
     print(f"Chunk shape: {chunk_shape}")
-    print(f"Shard config: {shard_config}")
-    print(f"Compression: {compression_config}")
+    print(f"Shard shape: {shard_shape}")
+    print(f"Compression: {compression_codec}")
     print(f"Writing optimized example to: {output_path}")
-    ome_zarr_image.write()
+    ome_zarr_image.write(chunks=chunk_shape, shards=shard_shape, compressors=compression_codec)
     print("✓ Optimized example completed")
 
 
@@ -256,9 +235,10 @@ def main():
     print("All examples completed successfully!")
     print("\nConfiguration guidelines:")
     print("- Chunking: Balance memory usage and I/O patterns")
-    print("- Compression: Use blosc/zstd for scientific data")
+    print("- Compression: Use BloscCodec/ZstdCodec for scientific data")
     print("- Sharding: Group chunks for better file system performance")
     print("- For large datasets: Use larger chunks and sharding")
+    print("- Parameters are passed to the write() method, not the constructor")
 
 
 if __name__ == "__main__":

@@ -59,13 +59,34 @@ def example_2_multichannel_metadata():
     with tempfile.TemporaryDirectory() as tmp_dir:
         output_path = Path(tmp_dir) / "multichannel_metadata.zarr"
         
-        # Channel information (for documentation purposes)
+        # Import OMERO metadata classes
+        from ome_zarr_writer.schema_models import Omero, Channel, Window
+        
+        # Channel information with OMERO metadata
         channel_info = [
-            {"name": "DAPI", "color": "blue", "description": "Nuclear stain"},
-            {"name": "GFP", "color": "green", "description": "Protein of interest"},
-            {"name": "RFP", "color": "red", "description": "Cell membrane marker"},
-            {"name": "Cy5", "color": "magenta", "description": "Secondary marker"},
+            {"name": "DAPI", "color": "0000FF", "description": "Nuclear stain"},
+            {"name": "GFP", "color": "00FF00", "description": "Protein of interest"},
+            {"name": "RFP", "color": "FF0000", "description": "Cell membrane marker"},
+            {"name": "Cy5", "color": "FF00FF", "description": "Secondary marker"},
         ]
+        
+        # Create OMERO channel metadata
+        omero_channels = []
+        for i, info in enumerate(channel_info):
+            # Create window for display intensity range
+            window = Window(start=0.0, min=0.0, end=4095.0, max=4095.0)
+            
+            # Create channel with metadata
+            channel = Channel(
+                window=window,
+                label=info["name"],
+                color=info["color"],
+                active=True
+            )
+            omero_channels.append(channel)
+        
+        # Create OMERO metadata object
+        omero_metadata = Omero(channels=omero_channels)
         
         writer = OmeZarrImage(
             path=output_path,
@@ -73,17 +94,35 @@ def example_2_multichannel_metadata():
             dims=["c", "y", "x"],
             axis_units={"y": "micrometer", "x": "micrometer"},
             scale_transformations={"y": 0.064, "x": 0.064},
+            omero_metadata=omero_metadata,
             overwrite=True,
         )
         
         writer.write()
         
-        print("   ✅ Created multichannel OME-Zarr")
+        print("   ✅ Created multichannel OME-Zarr with OMERO metadata")
         print("      Channel configuration:")
         for info in channel_info:
-            print(f"         {info['name']}: {info['description']} ({info['color']})")
+            print(f"         {info['name']}: {info['description']} (color: #{info['color']})")
         print("      Compatible with OME-Zarr viewers")
-        print("      💡 OMERO metadata can be added post-creation")
+        print("      ✅ OMERO metadata written to zarr attributes")
+        
+        # Verify OMERO metadata was written correctly
+        import zarr
+        root = zarr.open(str(output_path), mode='r')
+        attrs = dict(root.attrs)
+        if 'ome' in attrs and isinstance(attrs['ome'], dict) and 'omero' in attrs['ome']:
+            omero_attrs = attrs['ome']['omero']
+            if isinstance(omero_attrs, dict) and 'channels' in omero_attrs:
+                channels = omero_attrs['channels']
+                if isinstance(channels, list):
+                    print(f"      📊 Verified: {len(channels)} channels in OMERO metadata")
+                else:
+                    print("      ⚠️  Warning: OMERO channels data is not a list")
+            else:
+                print("      ⚠️  Warning: OMERO channels not found")
+        else:
+            print("      ⚠️  Warning: OMERO metadata not found in zarr attributes")
 
 
 def example_3_coordinate_transformations():
@@ -156,6 +195,9 @@ def example_4_multichannel_configurations():
     ]
     
     with tempfile.TemporaryDirectory() as tmp_dir:
+        # Import OMERO metadata classes
+        from ome_zarr_writer.schema_models import Omero, Channel, Window
+        
         for config in multichannel_configs:
             image = np.random.randint(0, 4095, size=config["shape"], dtype=np.uint16)
             output_path = Path(tmp_dir) / f"{config['name'].lower().replace(' ', '_')}.zarr"
@@ -168,12 +210,41 @@ def example_4_multichannel_configurations():
                     axis_units[dim] = "micrometer"
                     scale_transformations[dim] = 0.1  # 100 nm resolution
             
+            # Create OMERO metadata for multichannel data
+            omero_metadata = None
+            if "c" in config["dims"]:
+                # Create OMERO channel metadata
+                omero_channels = []
+                for i, channel_name in enumerate(config["channels"]):
+                    # Create window for display intensity range
+                    window = Window(start=0.0, min=0.0, end=4095.0, max=4095.0)
+                    
+                    # Define default colors for common channel types
+                    default_colors = {
+                        "DAPI": "0000FF", "FITC": "00FF00", "TRITC": "FF0000", "Cy5": "FF00FF",
+                        "Red": "FF0000", "Green": "00FF00", "Blue": "0000FF",
+                    }
+                    color = default_colors.get(channel_name, f"{(i*60)%256:02X}{(i*120)%256:02X}{(i*180)%256:02X}")
+                    
+                    # Create channel with metadata
+                    channel = Channel(
+                        window=window,
+                        label=channel_name,
+                        color=color,
+                        active=True
+                    )
+                    omero_channels.append(channel)
+                
+                # Create OMERO metadata object
+                omero_metadata = Omero(channels=omero_channels)
+            
             writer = OmeZarrImage(
                 path=output_path,
                 image=image,
                 dims=config["dims"],
                 axis_units=axis_units,
                 scale_transformations=scale_transformations,
+                omero_metadata=omero_metadata,
                 overwrite=True,
             )
             
@@ -183,6 +254,10 @@ def example_4_multichannel_configurations():
             print(f"      Description: {config['description']}")
             print(f"      Channels ({len(config['channels'])}): {', '.join(config['channels'])}")
             print(f"      Dimensions: {config['dims']}")
+            if omero_metadata:
+                print(f"      ✅ OMERO metadata written with {len(config['channels'])} channel definitions")
+            else:
+                print("      ℹ️  No channel dimension - OMERO metadata not applicable")
             print()
 
 
@@ -260,14 +335,14 @@ def main():
     print("\n" + "=" * 65)
     print("🎯 Metadata Best Practices:")
     print("   • Use schema dataclasses for precise control")
-    print("   • Add OMERO metadata for enhanced visualization")
+    print("   • Create OMERO metadata objects to write channel information")
     print("   • Define proper coordinate transformations")
     print("   • Validate all metadata against OME-Zarr schema")
-    print("   • Include descriptive channel names and colors")
+    print("   • Include descriptive channel names and colors in OMERO metadata")
     print()
     print("Key Benefits:")
     print("   📊 Schema validation ensures compatibility")
-    print("   🎨 OMERO metadata improves visualization")
+    print("   🎨 OMERO metadata written to zarr enables better visualization")
     print("   🗺️  Coordinate transformations preserve spatial information")
     print("   🔍 Rich metadata enables better analysis workflows")
     print()

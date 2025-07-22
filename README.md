@@ -156,14 +156,18 @@ ome_zarr_image = OmeZarrImage(
     axis_units=axis_units,
     scale_transformations=scale_transformations,
     downscale_levels=3,
-    chunks=(8, 256, 256),      # Optimize chunk size for access patterns
-    shards=(32, 512, 512),     # Group chunks into shards for efficiency
-    compression="zstd",        # Use Zstandard compression
-    compression_level=3,       # Balance compression vs speed
+    downscale_factor=2,
     overwrite=True
 )
 
-ome_zarr_image.write()
+# Setup compression options
+compressors = zarr.codecs.BloscCodec(cname="zstd", clevel=5, shuffle=zarr.codecs.BloscShuffle.shuffle)
+
+ome_zarr_image.write(
+    chunks=(8, 256, 256),      # Optimize chunk size for access patterns
+    shards=(32, 512, 512),     # Group chunks into shards for efficiency
+    compressors=compressors
+)
 
 print("✅ Successfully created advanced.ome.zarr with optimized storage")
 ```

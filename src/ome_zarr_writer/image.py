@@ -1,6 +1,6 @@
 """Main OME-Zarr writer implementation."""
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Literal
 import zarr
 import numpy as np
 from pathlib import Path
@@ -33,6 +33,7 @@ class OmeZarrImage:
         image: Union[da.Array, np.ndarray],
         dims: List[str],
         axis_units: Union[List[Axis], Dict[str, Any]],
+        downscale_method: Literal["gaussian", "nearest-neighbor"],
         scale_transformations: Optional[Dict[str, Any]] = None,
         downscale_levels: Optional[int] = None,
         downscale_factor: float = 2.0,

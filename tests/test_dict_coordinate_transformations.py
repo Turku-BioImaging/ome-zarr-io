@@ -25,11 +25,7 @@ class TestDictScaleTransformations:
 
     def test_simple_float_dict_format(self):
         """Test scale transformations with simple float values."""
-        scale_transformations = {
-            "z": 0.25,
-            "y": 0.1,
-            "x": 0.1
-        }
+        scale_transformations = {"z": 0.25, "y": 0.1, "x": 0.1}
 
         ome_zarr_image = OmeZarrImage(
             path=self.output_path,
@@ -43,7 +39,7 @@ class TestDictScaleTransformations:
         # Check that transformations were processed correctly
         assert ome_zarr_image.coordinate_transformations is not None
         assert len(ome_zarr_image.coordinate_transformations) == 1
-        
+
         transform = ome_zarr_image.coordinate_transformations[0]
         assert isinstance(transform, ScaleTransformation)
         # Expected scale: [1.0, 0.25, 0.1, 0.1] for [c, z, y, x]
@@ -59,7 +55,7 @@ class TestDictScaleTransformations:
         scale_transformations = {
             "z": (0.25, "micrometer"),
             "y": (0.1, "micrometer"),
-            "x": (0.1, "micrometer")
+            "x": (0.1, "micrometer"),
         }
 
         # Tuple format should raise an error
@@ -77,7 +73,7 @@ class TestDictScaleTransformations:
         """Test partial specification where only some dimensions are provided."""
         scale_transformations = {
             "y": 0.065,
-            "x": 0.065
+            "x": 0.065,
             # z and c will get default scale of 1.0
         }
 
@@ -101,12 +97,8 @@ class TestDictScaleTransformations:
         """Test with different dimension order (ZYX instead of CZYX)."""
         test_image = np.random.randint(0, 255, size=(10, 64, 64), dtype=np.uint8)
         dims = ["z", "y", "x"]
-        
-        scale_transformations = {
-            "z": 0.5,
-            "y": 0.1,
-            "x": 0.1
-        }
+
+        scale_transformations = {"z": 0.5, "y": 0.1, "x": 0.1}
 
         ome_zarr_image = OmeZarrImage(
             path=self.output_path,
@@ -120,7 +112,7 @@ class TestDictScaleTransformations:
         # Check that transformations were processed correctly
         assert ome_zarr_image.coordinate_transformations is not None
         assert len(ome_zarr_image.coordinate_transformations) == 1
-        
+
         transform = ome_zarr_image.coordinate_transformations[0]
         assert isinstance(transform, ScaleTransformation)
         expected_scale = [0.5, 0.1, 0.1]  # [z, y, x]
@@ -128,13 +120,11 @@ class TestDictScaleTransformations:
 
     def test_invalid_dimension_name(self):
         """Test error handling for invalid dimension names."""
-        scale_transformations = {
-            "invalid_dim": 0.1,
-            "y": 0.1,
-            "x": 0.1
-        }
+        scale_transformations = {"invalid_dim": 0.1, "y": 0.1, "x": 0.1}
 
-        with pytest.raises(ValueError, match="Dimension 'invalid_dim' not found in dims"):
+        with pytest.raises(
+            ValueError, match="Dimension 'invalid_dim' not found in dims"
+        ):
             OmeZarrImage(
                 path=self.output_path,
                 image=self.test_image,
@@ -149,10 +139,12 @@ class TestDictScaleTransformations:
         scale_transformations = {
             "z": -0.25,  # Negative scale value should be invalid
             "y": 0.1,
-            "x": 0.1
+            "x": 0.1,
         }
 
-        with pytest.raises(ValueError, match="Scale value for dimension 'z' must be positive"):
+        with pytest.raises(
+            ValueError, match="Scale value for dimension 'z' must be positive"
+        ):
             OmeZarrImage(
                 path=self.output_path,
                 image=self.test_image,
@@ -167,7 +159,7 @@ class TestDictScaleTransformations:
         scale_transformations = {
             "z": (0.25,),  # Tuple with only one element
             "y": 0.1,
-            "x": 0.1
+            "x": 0.1,
         }
 
         with pytest.raises(ValueError, match="Invalid value for dimension 'z'"):
@@ -209,7 +201,7 @@ class TestDictScaleTransformations:
         # Should create a transformation with all 1.0 scales
         assert ome_zarr_image.coordinate_transformations is not None
         assert len(ome_zarr_image.coordinate_transformations) == 1
-        
+
         transform = ome_zarr_image.coordinate_transformations[0]
         assert isinstance(transform, ScaleTransformation)
         expected_scale = [1.0, 1.0, 1.0, 1.0]  # All default scales
@@ -219,8 +211,8 @@ class TestDictScaleTransformations:
         """Test that mixing tuples with numbers is no longer supported."""
         scale_transformations = {
             "z": (0.25, "micrometer"),  # Tuple format (no longer supported)
-            "y": 0.1,                   # Float format
-            "x": 0.1                    # Float format
+            "y": 0.1,  # Float format
+            "x": 0.1,  # Float format
         }
 
         # Should raise an error since tuple format is not supported

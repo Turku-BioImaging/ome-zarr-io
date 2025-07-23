@@ -33,7 +33,7 @@ class TestCompressorsParameter:
 
             # Verify file was created
             assert output_path.exists()
-            
+
             # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
@@ -61,7 +61,7 @@ class TestCompressorsParameter:
 
             # Verify file was created
             assert output_path.exists()
-            
+
             # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
@@ -89,7 +89,7 @@ class TestCompressorsParameter:
 
             # Verify file was created
             assert output_path.exists()
-            
+
             # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
@@ -117,7 +117,7 @@ class TestCompressorsParameter:
 
             # Verify file was created
             assert output_path.exists()
-            
+
             # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
@@ -146,13 +146,13 @@ class TestCompressorsParameter:
 
             # Verify file was created
             assert output_path.exists()
-            
+
             # Verify zarr group structure with multiple levels
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group  # Original level
             assert "1" in group  # First downscale level
             assert "2" in group  # Second downscale level
-            
+
             # Verify shapes decrease as expected
             array_0 = group["0"]
             array_1 = group["1"]
@@ -179,14 +179,12 @@ class TestCompressorsParameter:
 
             # Test with all parameters
             writer.write(
-                compressors=GzipCodec(level=6),
-                chunks=(32, 32),
-                shards=(64, 64)
+                compressors=GzipCodec(level=6), chunks=(32, 32), shards=(64, 64)
             )
 
             # Verify file was created
             assert output_path.exists()
-            
+
             # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group

@@ -61,7 +61,12 @@ class TestAxisUnits:
         dims = ["t", "c", "z", "y", "x"]
 
         # Create axis units as a dictionary
-        axis_units: Dict[str, Any] = {"t": "second", "z": "nanometer", "y": "nanometer", "x": "nanometer"}
+        axis_units: Dict[str, Any] = {
+            "t": "second",
+            "z": "nanometer",
+            "y": "nanometer",
+            "x": "nanometer",
+        }
 
         # Create OME-Zarr image
         ome_zarr_image = OmeZarrImage(

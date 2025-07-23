@@ -1,12 +1,12 @@
 """Main OME-Zarr writer implementation."""
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Literal
 import zarr
 import numpy as np
 from pathlib import Path
 import dask.array as da
 import dask_image.ndfilters
-from skimage.transform import rescale
+from skimage.transform import rescale, resize
 from zarr.core.array import CompressorsLike
 from .schema_models import (
     ScaleTransformation,
@@ -33,6 +33,7 @@ class OmeZarrImage:
         image: Union[da.Array, np.ndarray],
         dims: List[str],
         axis_units: Union[List[Axis], Dict[str, Any]],
+        downscale_method: Literal["gaussian", "nearest"] = "gaussian",
         scale_transformations: Optional[Dict[str, Any]] = None,
         downscale_levels: Optional[int] = None,
         downscale_factor: float = 2.0,
@@ -49,11 +50,12 @@ class OmeZarrImage:
                 of dimensions of the input image, or a dictionary that specifies units for each
                 dimension. Dictionary format:
                 - Per-dimension units: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
+            downscale_method: Method to use for downscaling. Either Gaussian filter or nearest-neighbor interpolation; default "gaussian". Use Gaussian filtering for intensity images to avoid aliasing artifacts in downscaled images. Label images should be downscaled using nearest-neighbor interpolation.
             scale_transformations: Optional dictionary specifying scale values for dimensions.
                 Examples:
                 - {"z": 0.25, "y": 0.1, "x": 0.1} for spatial dimensions
                 - {"t": 0.5, "z": 0.25, "y": 0.1, "x": 0.1} including time axis
-                Units are determined by the axis_units parameter. Scale values will be 
+                Units are determined by the axis_units parameter. Scale values will be
                 automatically adjusted for each downscale level.
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
             downscale_factor: Factor by which to downscale each level (default: 2.0).
@@ -71,6 +73,7 @@ class OmeZarrImage:
             self.image = image
         self.dims = dims
         self.downscale_factor = downscale_factor
+        self.downscale_method = downscale_method
         self.overwrite = overwrite
 
         # Process and validate axis_units
@@ -149,7 +152,31 @@ class OmeZarrImage:
         arrays = [self.image]  # Level 0: original resolution
         current_array = self.image
 
-        for level in range(1, self.downscale_levels + 1):
+        # Create a rescaling function that only operates on Y and X dimensions
+        def rescale_yx_block(block, order: int):
+            """
+            Rescale only the last two dimensions of a block by the downscale factor. Parameter `order` is the order of interpolation. 0 = nearest-neighbor, 1 = bilinear See `https://scikit-image.org/docs/stable/api/skimage.transform.html#skimage.transform.warp` for more details.
+            """
+
+            # Create scale factors: 1 for all dimensions except last two
+            scale_factors = [1.0] * block.ndim
+            scale_factor = 1.0 / downscale_factor
+            scale_factors[-2] = scale_factor  # Y dimension
+            scale_factors[-1] = scale_factor  # X dimension
+
+            return rescale(
+                block,
+                scale=scale_factors,
+                order=order,
+                preserve_range=True,
+                anti_aliasing=False,  # Already applied Gaussian filter
+                channel_axis=None,
+            ).astype(block.dtype)
+
+        for _ in range(1, self.downscale_levels + 1):
+
+            downscale_factor = self.downscale_factor  # Capture for closure
+
             # Check if Y or X dimensions are too small to downscale further
             if (
                 current_array.shape[-2] / self.downscale_factor < 1
@@ -158,66 +185,105 @@ class OmeZarrImage:
                 # Stop creating more levels if dimensions become too small
                 break
 
-            # Apply Gaussian filter to prevent aliasing
-            # Sigma is proportional to the downscale factor
-            # For factor=2, sigma=0.5; for factor=4, sigma=1.0, etc.
-            sigma = [0.0] * current_array.ndim
-            sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
-            sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension
+            # If Y and X dimensions are not too small for downscaling,
+            # apply the chosen downscale method
 
-            filtered_array = dask_image.ndfilters.gaussian_filter(
-                current_array, sigma=sigma, mode="nearest"
-            )
+            # Validate downscale_method, if not set silently to default Gaussian
+            if self.downscale_method not in {"gaussian", "nearest"}:
+                self.downscale_method = "gaussian"
 
-            # Create a rescaling function that only operates on Y and X dimensions
-            downscale_factor = self.downscale_factor  # Capture for closure
+            # If downscale_method is default Gaussian:
+            if self.downscale_method == "gaussian":
 
-            def rescale_yx_block(block, block_id=None):
-                """Rescale only the last two dimensions of a block by the downscale factor."""
-                # Create scale factors: 1 for all dimensions except last two
-                scale_factors = [1.0] * block.ndim
-                scale_factor = 1.0 / downscale_factor
-                scale_factors[-2] = scale_factor  # Y dimension
-                scale_factors[-1] = scale_factor  # X dimension
+                # Apply Gaussian filter to prevent aliasing
+                # Sigma is proportional to the downscale factor
+                # For factor=2, sigma=0.5; for factor=4, sigma=1.0, etc.
+                sigma = [0.0] * current_array.ndim
+                sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
+                sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension
 
-                return rescale(
-                    block,
-                    scale=scale_factors,
-                    preserve_range=True,
-                    anti_aliasing=False,  # Already applied Gaussian filter
-                    channel_axis=None,
-                ).astype(block.dtype)
-
-            # Calculate the expected output shape
-            new_shape = list(current_array.shape)
-            new_shape[-2] = int(new_shape[-2] / self.downscale_factor)  # Y dimension
-            new_shape[-1] = int(new_shape[-1] / self.downscale_factor)  # X dimension
-
-            # Calculate new chunk sizes (also downscaled for Y and X dimensions)
-            new_chunks = list(filtered_array.chunks)
-            new_chunks[-2] = tuple(
-                max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-2]
-            )
-            new_chunks[-1] = tuple(
-                max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-1]
-            )
-
-            try:
-                current_array = da.map_blocks(
-                    rescale_yx_block,
-                    filtered_array,
-                    dtype=filtered_array.dtype,
-                    chunks=new_chunks,
-                    drop_axis=None,
-                    new_axis=None,
-                    meta=np.array([], dtype=filtered_array.dtype),
+                filtered_array = dask_image.ndfilters.gaussian_filter(
+                    current_array, sigma=sigma, mode="nearest"
                 )
 
-                arrays.append(current_array)
+                # Calculate the expected output shape
+                new_shape = list(current_array.shape)
+                new_shape[-2] = int(
+                    new_shape[-2] / self.downscale_factor
+                )  # Y dimension
+                new_shape[-1] = int(
+                    new_shape[-1] / self.downscale_factor
+                )  # X dimension
 
-            except (ValueError, RuntimeError):
-                # If rescaling fails, stop here
-                break
+                # Calculate new chunk sizes (also downscaled for Y and X dimensions)
+                new_chunks = list(filtered_array.chunks)
+                new_chunks[-2] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor))
+                    for chunk_size in new_chunks[-2]
+                )
+                new_chunks[-1] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor))
+                    for chunk_size in new_chunks[-1]
+                )
+
+                try:
+                    current_array = da.map_blocks(
+                        rescale_yx_block,
+                        filtered_array,
+                        dtype=filtered_array.dtype,
+                        chunks=new_chunks,
+                        drop_axis=None,
+                        new_axis=None,
+                        meta=np.array([], dtype=filtered_array.dtype),
+                        order=1,  # use bicubic interpolation on Gaussian-filtered data
+                    )
+
+                    arrays.append(current_array)
+
+                except (ValueError, RuntimeError):
+                    # If rescaling fails, stop here
+                    break
+
+            # If downscale_method is nearest-neighbor:
+            elif self.downscale_method == "nearest":
+
+                # Calculate the expected output shape
+                new_shape = list(current_array.shape)
+                new_shape[-2] = int(
+                    new_shape[-2] / self.downscale_factor
+                )  # Y dimension
+                new_shape[-1] = int(
+                    new_shape[-1] / self.downscale_factor
+                )  # X dimension
+
+                # Calculate new chunk sizes (also downscaled for Y and X dimensions)
+                new_chunks = list(current_array.chunks)
+                new_chunks[-2] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor))
+                    for chunk_size in new_chunks[-2]
+                )
+                new_chunks[-1] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor))
+                    for chunk_size in new_chunks[-1]
+                )
+
+                try:
+                    current_array = da.map_blocks(
+                        rescale_yx_block,
+                        current_array,
+                        dtype=current_array.dtype,
+                        chunks=tuple(new_chunks),
+                        drop_axis=None,
+                        new_axis=None,
+                        meta=np.array([], dtype=current_array.dtype),
+                        order=0,  # nearest-neighbor interpolation
+                    )
+
+                    arrays.append(current_array)
+
+                except (ValueError, RuntimeError):
+                    # If rescaling fails, stop here
+                    break
 
         return arrays
 
@@ -227,8 +293,8 @@ class OmeZarrImage:
         """Create coordinate transformations for each downscale level.
 
         Takes the scale transformations provided for the original image and
-        adjusts them appropriately for each downscale level. The spatial dimensions 
-        (Y and X, which are the last two dimensions) are multiplied by the 
+        adjusts them appropriately for each downscale level. The spatial dimensions
+        (Y and X, which are the last two dimensions) are multiplied by the
         downscale factor for each level.
 
         Returns:
@@ -360,24 +426,28 @@ class OmeZarrImage:
         axes = []
         for dim in dims:
             dim_lower = dim.lower()
-            
+
             # Get unit for this dimension (case insensitive lookup)
             unit = None
             for key, value in axis_dict.items():
                 if key.lower() == dim_lower:
                     unit = value
                     break
-            
+
             if dim_lower == "t":
                 if unit is None:
-                    raise ValueError(f"Time dimension '{dim}' requires a unit specification")
+                    raise ValueError(
+                        f"Time dimension '{dim}' requires a unit specification"
+                    )
                 axes.append(Axis(name=dim, type="time", unit=unit))
             elif dim_lower == "c":
                 # Channel dimension - no unit needed, can be omitted from axis_units
                 axes.append(Axis(name=dim, type="channel", unit=None))
             elif dim_lower in ["x", "y", "z"]:
                 if unit is None:
-                    raise ValueError(f"Spatial dimension '{dim}' requires a unit specification")
+                    raise ValueError(
+                        f"Spatial dimension '{dim}' requires a unit specification"
+                    )
                 axes.append(Axis(name=dim, type="space", unit=unit))
             else:
                 raise ValueError(
@@ -407,7 +477,9 @@ class OmeZarrImage:
             return None
 
         if isinstance(scale_transformations, dict):
-            return self._create_scale_transformation_from_dict(scale_transformations, dims)
+            return self._create_scale_transformation_from_dict(
+                scale_transformations, dims
+            )
         else:
             raise ValueError(
                 f"scale_transformations must be a dictionary, got {type(scale_transformations)}"
@@ -553,12 +625,13 @@ class OmeZarrImage:
             # Create dataset metadata
             from typing import cast
             from .schema_models import TranslationTransformation
+
             dataset = Dataset(
-                path=str(level), 
+                path=str(level),
                 coordinateTransformations=cast(
-                    List[Union[ScaleTransformation, TranslationTransformation]], 
-                    transformations
-                )
+                    List[Union[ScaleTransformation, TranslationTransformation]],
+                    transformations,
+                ),
             )
             datasets.append(dataset)
 
@@ -571,9 +644,7 @@ class OmeZarrImage:
 
         # Create OME metadata
         ome_metadata = OMEMetadata(
-            multiscales=[multiscale], 
-            version="0.5",
-            omero=self.omero_metadata
+            multiscales=[multiscale], version="0.5", omero=self.omero_metadata
         )
 
         # Create final metadata container

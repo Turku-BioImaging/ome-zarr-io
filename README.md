@@ -16,6 +16,7 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Strict TCZYX dimension ordering
 - Space axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
 - Time axis unit validation
+- Two downscaling methods: Gaussian filtering (default) and nearest-neighbor interpolation
 
 
 ## Installation
@@ -36,6 +37,26 @@ git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
 
 # Then install with pip
 pip install -r requirements.txt
+```
+
+## Downscaling Methods
+
+### Gaussian Filtering (Default)
+- **Best for:** Intensity images (fluorescence, brightfield, etc.)
+- **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
+- **Use case:** Most microscopy images where preserving smooth intensity variations is important
+
+### Nearest-Neighbor Interpolation  
+- **Best for:** Label/segmentation images with discrete values
+- **Method:** Preserves exact pixel values during downscaling
+- **Use case:** Segmentation masks, label images where each value represents a distinct object/region
+
+```python
+# For intensity images (default)
+downscale_method='gaussian'
+
+# For label/segmentation images
+downscale_method='nearest'
 ```
 
 ## Quick Start
@@ -73,6 +94,7 @@ ome_zarr_image = OmeZarrImage(
     dims=dims,
     axis_units=axis_units,
     scale_transformations=scale_transformations,
+    downscale_method='gaussian',  # Use Gaussian filtering for intensity images
     downscale_levels=3,  # Create 3 additional downscale levels
     overwrite=True
 )
@@ -116,6 +138,7 @@ ome_zarr_image = OmeZarrImage(
     dims=dims,
     axis_units=axis_units,
     scale_transformations=scale_transformations,
+    downscale_method='gaussian',  # Use Gaussian filtering for time-lapse data
     downscale_levels=2,
     overwrite=True
 )
@@ -155,6 +178,7 @@ ome_zarr_image = OmeZarrImage(
     dims=dims,
     axis_units=axis_units,
     scale_transformations=scale_transformations,
+    downscale_method='gaussian',  # Default Gaussian filtering for intensity data
     downscale_levels=3,
     downscale_factor=2,
     overwrite=True

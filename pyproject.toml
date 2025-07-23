@@ -11,6 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [
     {name = "Junel Solis, Turku BioImaging", email = "junel.solis@abo.fi"},
+    {name = "Linda Srbova, Turku BioImaging", email = "linda.srbova@abo.fi"}
 ]
 maintainers = [
     {name = "Junel Solis, Turku BioImaging", email = "junel.solis@abo.fi"},

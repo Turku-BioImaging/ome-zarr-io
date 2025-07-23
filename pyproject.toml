@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ome-zarr-writer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Write valid OME-Zarr 0.5 multiscale images"
 readme = "README.md"
 license = "MIT"
@@ -66,7 +66,7 @@ ome_zarr_writer = "src/ome_zarr_writer"
 
 [tool.black]
 line-length = 88
-target-version = ['py311']
+target-version = ['py311', 'py312', 'py313']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

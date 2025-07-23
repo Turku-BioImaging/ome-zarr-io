@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 import dask.array as da
 import dask_image.ndfilters
-from skimage.transform import rescale
+from skimage.transform import rescale, resize
 from zarr.core.array import CompressorsLike
 from .schema_models import (
     ScaleTransformation,
@@ -153,6 +153,9 @@ class OmeZarrImage:
         current_array = self.image
 
         for level in range(1, self.downscale_levels + 1):
+            
+            downscale_factor = self.downscale_factor  # Capture for closure
+
             # Check if Y or X dimensions are too small to downscale further
             if (
                 current_array.shape[-2] / self.downscale_factor < 1
@@ -160,67 +163,119 @@ class OmeZarrImage:
             ):
                 # Stop creating more levels if dimensions become too small
                 break
+            
+            # If Y and X dimensions are not too small for downscaling,
+            # apply the chosen downscale method
 
-            # Apply Gaussian filter to prevent aliasing
-            # Sigma is proportional to the downscale factor
-            # For factor=2, sigma=0.5; for factor=4, sigma=1.0, etc.
-            sigma = [0.0] * current_array.ndim
-            sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
-            sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension
+            # If downscale_method is default/Gaussian:
+            elif self.downscale_method == 'gaussian':
 
-            filtered_array = dask_image.ndfilters.gaussian_filter(
-                current_array, sigma=sigma, mode="nearest"
-            )
+                # Apply Gaussian filter to prevent aliasing
+                # Sigma is proportional to the downscale factor
+                # For factor=2, sigma=0.5; for factor=4, sigma=1.0, etc.
+                sigma = [0.0] * current_array.ndim
+                sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
+                sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension
 
-            # Create a rescaling function that only operates on Y and X dimensions
-            downscale_factor = self.downscale_factor  # Capture for closure
-
-            def rescale_yx_block(block, block_id=None):
-                """Rescale only the last two dimensions of a block by the downscale factor."""
-                # Create scale factors: 1 for all dimensions except last two
-                scale_factors = [1.0] * block.ndim
-                scale_factor = 1.0 / downscale_factor
-                scale_factors[-2] = scale_factor  # Y dimension
-                scale_factors[-1] = scale_factor  # X dimension
-
-                return rescale(
-                    block,
-                    scale=scale_factors,
-                    preserve_range=True,
-                    anti_aliasing=False,  # Already applied Gaussian filter
-                    channel_axis=None,
-                ).astype(block.dtype)
-
-            # Calculate the expected output shape
-            new_shape = list(current_array.shape)
-            new_shape[-2] = int(new_shape[-2] / self.downscale_factor)  # Y dimension
-            new_shape[-1] = int(new_shape[-1] / self.downscale_factor)  # X dimension
-
-            # Calculate new chunk sizes (also downscaled for Y and X dimensions)
-            new_chunks = list(filtered_array.chunks)
-            new_chunks[-2] = tuple(
-                max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-2]
-            )
-            new_chunks[-1] = tuple(
-                max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-1]
-            )
-
-            try:
-                current_array = da.map_blocks(
-                    rescale_yx_block,
-                    filtered_array,
-                    dtype=filtered_array.dtype,
-                    chunks=new_chunks,
-                    drop_axis=None,
-                    new_axis=None,
-                    meta=np.array([], dtype=filtered_array.dtype),
+                filtered_array = dask_image.ndfilters.gaussian_filter(
+                    current_array, sigma=sigma, mode="nearest"
                 )
 
-                arrays.append(current_array)
+                # Create a rescaling function that only operates on Y and X dimensions
+                def rescale_yx_block(block, block_id=None):
+                    """Rescale only the last two dimensions of a block by the downscale factor."""
+                    
+                    # Create scale factors: 1 for all dimensions except last two
+                    scale_factors = [1.0] * block.ndim
+                    scale_factor = 1.0 / downscale_factor
+                    scale_factors[-2] = scale_factor  # Y dimension
+                    scale_factors[-1] = scale_factor  # X dimension
 
-            except (ValueError, RuntimeError):
-                # If rescaling fails, stop here
-                break
+                    return rescale(
+                        block,
+                        scale=scale_factors,
+                        preserve_range=True,
+                        anti_aliasing=False,  # Already applied Gaussian filter
+                        channel_axis=None,
+                    ).astype(block.dtype)
+
+                # Calculate the expected output shape
+                new_shape = list(current_array.shape)
+                new_shape[-2] = int(new_shape[-2] / self.downscale_factor)  # Y dimension
+                new_shape[-1] = int(new_shape[-1] / self.downscale_factor)  # X dimension
+
+                # Calculate new chunk sizes (also downscaled for Y and X dimensions)
+                new_chunks = list(filtered_array.chunks)
+                new_chunks[-2] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-2]
+                )
+                new_chunks[-1] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-1]
+                )
+
+                try:
+                    current_array = da.map_blocks(
+                        rescale_yx_block,
+                        filtered_array,
+                        dtype=filtered_array.dtype,
+                        chunks=new_chunks,
+                        drop_axis=None,
+                        new_axis=None,
+                        meta=np.array([], dtype=filtered_array.dtype),
+                    )
+
+                    arrays.append(current_array)
+
+                except (ValueError, RuntimeError):
+                    # If rescaling fails, stop here
+                    break
+            
+            # If downscale_method is nearest-neighbor:
+            elif self.downscale_method == "nearest-neighbor":
+
+                def resize_yx_block(block, block_info = None, block_id=None):
+                    """Resizes the N-dimensional images using nearest neighbor interpolation (order == 0)."""
+                    
+                    # Extract the target shape of the output chunk from the block-info 
+                    output_shape = block_info[None]['chunk-shape']
+
+                    return resize(
+                        block,
+                        output_shape=output_shape,
+                        order=0,  # nearest-neighbor interpolation
+                        # anti_aliasing=False,  # By default because data type is Bool
+                    ).astype(block.dtype)
+                    
+                # Calculate the expected output shape
+                new_shape = list(current_array.shape)
+                new_shape[-2] = int(new_shape[-2] / self.downscale_factor)  # Y dimension
+                new_shape[-1] = int(new_shape[-1] / self.downscale_factor)  # X dimension
+                
+                # Calculate new chunk sizes (also downscaled for Y and X dimensions)
+                new_chunks = list(current_array.chunks)
+                new_chunks[-2] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-2]
+                )
+                new_chunks[-1] = tuple(
+                    max(1, int(chunk_size / self.downscale_factor)) for chunk_size in new_chunks[-1]
+                )
+
+                try:
+                    current_array = da.map_blocks(
+                        resize_yx_block,
+                        current_array,
+                        dtype=current_array.dtype,
+                        chunks=tuple(new_chunks),
+                        drop_axis=None,
+                        new_axis=None,
+                        meta=np.array([], dtype=current_array.dtype),
+                    )
+
+                    arrays.append(current_array)
+
+                except (ValueError, RuntimeError):
+                    # If rescaling fails, stop here
+                    break
 
         return arrays
 

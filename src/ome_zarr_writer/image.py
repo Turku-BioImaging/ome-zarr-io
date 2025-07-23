@@ -74,6 +74,7 @@ class OmeZarrImage:
             self.image = image
         self.dims = dims
         self.downscale_factor = downscale_factor
+        self.downscale_method = downscale_method
         self.overwrite = overwrite
 
         # Process and validate axis_units

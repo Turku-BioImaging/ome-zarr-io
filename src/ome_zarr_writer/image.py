@@ -51,7 +51,6 @@ class OmeZarrImage:
                 dimension. Dictionary format:
                 - Per-dimension units: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
             downscale_method: Method to use for downscaling. Either Gaussian filter or nearest-neighbor interpolation; default "gaussian". Use Gaussian filtering for intensity images to avoid aliasing artifacts in downscaled images. Label images should be downscaled using nearest-neighbor interpolation.
-                Another option like "nearest-neighbor" is being added.
             scale_transformations: Optional dictionary specifying scale values for dimensions.
                 Examples:
                 - {"z": 0.25, "y": 0.1, "x": 0.1} for spatial dimensions
@@ -232,7 +231,7 @@ class OmeZarrImage:
                     break
             
             # If downscale_method is nearest-neighbor:
-            elif self.downscale_method == "nearest-neighbor":
+            elif self.downscale_method == "nearest":
 
                 def resize_yx_block(block, block_info = None, block_id=None):
                     """Resizes the N-dimensional images using nearest neighbor interpolation (order == 0)."""

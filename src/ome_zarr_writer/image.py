@@ -166,9 +166,13 @@ class OmeZarrImage:
             
             # If Y and X dimensions are not too small for downscaling,
             # apply the chosen downscale method
-
-            # If downscale_method is default/Gaussian:
-            elif self.downscale_method == 'gaussian':
+            
+            # Validate downscale_method, if not set silently to default Gaussian
+            if self.downscale_method not in {"gaussian", "nearest"}:
+                self.downscale_method = "gaussian"
+            
+            # If downscale_method is default Gaussian:
+            if self.downscale_method == 'gaussian':
 
                 # Apply Gaussian filter to prevent aliasing
                 # Sigma is proportional to the downscale factor

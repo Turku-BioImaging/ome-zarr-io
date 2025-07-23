@@ -26,8 +26,8 @@ def test_downscale_method_gaussian(temp_dir):
     test_image = np.zeros((60, 60), dtype=np.uint8)
     test_image[15:45, 15:45] = 255  # White square
     test_image[22:38, 22:38] = 128  # Gray square in center
-    test_image[25:35, 25:35] = 64   # Dark gray square in center
-    
+    test_image[25:35, 25:35] = 64  # Dark gray square in center
+
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
@@ -47,35 +47,37 @@ def test_downscale_method_gaussian(temp_dir):
 
     # Get downscaled arrays from OmeZarrImage
     ome_arrays = writer._create_downscaled_arrays()
-    
+
     # Create reference implementation for validation
     import dask_image.ndfilters
     from skimage.transform import rescale
-    
+
     reference_arrays = [test_image]  # Level 0: original
     current_array = test_image.astype(np.float64)
-    
+
     for level in range(1, downscale_levels + 1):
         # Check if dimensions are too small to continue
-        if (current_array.shape[0] / downscale_factor < 1 or 
-            current_array.shape[1] / downscale_factor < 1):
+        if (
+            current_array.shape[0] / downscale_factor < 1
+            or current_array.shape[1] / downscale_factor < 1
+        ):
             break
-            
+
         # Apply Gaussian filter with same sigma calculation as OmeZarrImage
         sigma = [0.0] * current_array.ndim
         sigma[-2] = (downscale_factor - 1) / 4.0  # Y dimension
         sigma[-1] = (downscale_factor - 1) / 4.0  # X dimension
-        
+
         filtered_array = dask_image.ndfilters.gaussian_filter(
             da.from_array(current_array), sigma=sigma, mode="nearest"
         ).compute()
-        
+
         # Rescale with same parameters as OmeZarrImage
         scale_factors = [1.0] * filtered_array.ndim
         scale_factor = 1.0 / downscale_factor
         scale_factors[-2] = scale_factor  # Y dimension
         scale_factors[-1] = scale_factor  # X dimension
-        
+
         downscaled = rescale(
             filtered_array,
             scale=scale_factors,
@@ -83,87 +85,128 @@ def test_downscale_method_gaussian(temp_dir):
             anti_aliasing=False,  # Already applied Gaussian filter
             channel_axis=None,
         ).astype(test_image.dtype)
-        
+
         reference_arrays.append(downscaled)
         current_array = downscaled.astype(np.float64)
-    
+
     # Verify we get the same number of levels
-    assert len(ome_arrays) == len(reference_arrays), f"Expected {len(reference_arrays)} levels, got {len(ome_arrays)}"
-    
+    assert len(ome_arrays) == len(
+        reference_arrays
+    ), f"Expected {len(reference_arrays)} levels, got {len(ome_arrays)}"
+
     # Compare each level with reference implementation
     # Allow increasing tolerance for deeper levels due to accumulated differences
-    max_allowed_diffs = [0, 2, 3, 4, 5]  # Level 0 exact, increasing tolerance for deeper levels
-    
+    max_allowed_diffs = [
+        0,
+        2,
+        3,
+        4,
+        5,
+    ]  # Level 0 exact, increasing tolerance for deeper levels
+
     for level, (ome_array, ref_array) in enumerate(zip(ome_arrays, reference_arrays)):
-        ome_computed = ome_array.compute() if hasattr(ome_array, 'compute') else ome_array
+        ome_computed = (
+            ome_array.compute() if hasattr(ome_array, "compute") else ome_array
+        )
         ome_computed = np.asarray(ome_computed)
         ref_array = np.asarray(ref_array)
-        
+
         # Shapes should match exactly
-        assert ome_computed.shape == ref_array.shape, f"Level {level}: shape mismatch {ome_computed.shape} vs {ref_array.shape}"
-        
+        assert (
+            ome_computed.shape == ref_array.shape
+        ), f"Level {level}: shape mismatch {ome_computed.shape} vs {ref_array.shape}"
+
         if level == 0:
             # Original should match exactly
-            np.testing.assert_array_equal(ome_computed, ref_array, 
-                                        err_msg=f"Level {level}: Original arrays don't match")
+            np.testing.assert_array_equal(
+                ome_computed,
+                ref_array,
+                err_msg=f"Level {level}: Original arrays don't match",
+            )
         else:
             # For downscaled levels, allow small differences due to numerical precision
             diff = np.abs(ome_computed.astype(np.int16) - ref_array.astype(np.int16))
             max_diff = np.max(diff)
             mean_diff = np.mean(diff)
-            
+
             max_allowed_diff = max_allowed_diffs[min(level, len(max_allowed_diffs) - 1)]
-            
-            assert max_diff <= max_allowed_diff, f"Level {level}: Max difference {max_diff} > {max_allowed_diff}"
-            assert mean_diff < 1.0, f"Level {level}: Mean difference {mean_diff} too high"
-            
+
+            assert (
+                max_diff <= max_allowed_diff
+            ), f"Level {level}: Max difference {max_diff} > {max_allowed_diff}"
+            assert (
+                mean_diff < 1.0
+            ), f"Level {level}: Mean difference {mean_diff} too high"
+
             # Calculate similarity percentage
             total_pixels = ome_computed.size
             matching_pixels = np.sum(diff <= 2)  # Allow up to 2-pixel differences
             similarity = (matching_pixels / total_pixels) * 100
-            
-            assert similarity >= 90.0, f"Level {level}: Only {similarity:.1f}% similarity with reference"
-    
+
+            assert (
+                similarity >= 90.0
+            ), f"Level {level}: Only {similarity:.1f}% similarity with reference"
+
     # Test specific expected shapes for our test case with factor 1.5
     expected_shapes = [
-        (60, 60),   # Original
-        (40, 40),   # 60/1.5 = 40
-        (26, 26),   # 40/1.5 ≈ 26
-        (17, 17),   # 26/1.5 ≈ 17
-        (11, 11),   # 17/1.5 ≈ 11
+        (60, 60),  # Original
+        (40, 40),  # 60/1.5 = 40
+        (26, 26),  # 40/1.5 ≈ 26
+        (17, 17),  # 26/1.5 ≈ 17
+        (11, 11),  # 17/1.5 ≈ 11
     ]
-    
+
     for level in range(min(len(ome_arrays), len(expected_shapes))):
         actual_shape = ome_arrays[level].shape
         expected_shape = expected_shapes[level]
-        assert actual_shape == expected_shape, f"Level {level}: expected shape {expected_shape}, got {actual_shape}"
-    
+        assert (
+            actual_shape == expected_shape
+        ), f"Level {level}: expected shape {expected_shape}, got {actual_shape}"
+
     # Verify that Gaussian filtering is actually applied (edges should be smoothed)
     if len(ome_arrays) >= 2:
-        original = ome_arrays[0].compute() if hasattr(ome_arrays[0], 'compute') else ome_arrays[0]
-        downscaled = ome_arrays[1].compute() if hasattr(ome_arrays[1], 'compute') else ome_arrays[1]
-        
+        original = (
+            ome_arrays[0].compute()
+            if hasattr(ome_arrays[0], "compute")
+            else ome_arrays[0]
+        )
+        downscaled = (
+            ome_arrays[1].compute()
+            if hasattr(ome_arrays[1], "compute")
+            else ome_arrays[1]
+        )
+
         # Ensure we have numpy arrays
         original = np.asarray(original)
         downscaled = np.asarray(downscaled)
-        
+
         # Original should have sharp edges (high gradient)
         original_grad = np.gradient(original.astype(np.float32))
-        original_edge_strength = np.sqrt(original_grad[0]**2 + original_grad[1]**2).max()
-        
+        original_edge_strength = np.sqrt(
+            original_grad[0] ** 2 + original_grad[1] ** 2
+        ).max()
+
         # Downscaled should have smoother edges (lower gradient)
         downscaled_grad = np.gradient(downscaled.astype(np.float32))
-        downscaled_edge_strength = np.sqrt(downscaled_grad[0]**2 + downscaled_grad[1]**2).max()
-        
+        downscaled_edge_strength = np.sqrt(
+            downscaled_grad[0] ** 2 + downscaled_grad[1] ** 2
+        ).max()
+
         # Gaussian filtering should reduce edge strength
-        assert downscaled_edge_strength < original_edge_strength, "Gaussian filtering should smooth edges"
-    
+        assert (
+            downscaled_edge_strength < original_edge_strength
+        ), "Gaussian filtering should smooth edges"
+
     print(f"✅ Gaussian downscaling validation passed with {len(ome_arrays)} levels")
     for level, (ome_array, ref_array) in enumerate(zip(ome_arrays, reference_arrays)):
-        ome_computed = ome_array.compute() if hasattr(ome_array, 'compute') else ome_array
+        ome_computed = (
+            ome_array.compute() if hasattr(ome_array, "compute") else ome_array
+        )
         if level > 0:
             diff = np.abs(ome_computed.astype(np.int16) - ref_array.astype(np.int16))
-            print(f"   Level {level}: {ome_computed.shape}, max_diff: {np.max(diff)}, mean_diff: {np.mean(diff):.3f}")
+            print(
+                f"   Level {level}: {ome_computed.shape}, max_diff: {np.max(diff)}, mean_diff: {np.mean(diff):.3f}"
+            )
         else:
             print(f"   Level {level}: {ome_computed.shape} (original, exact match)")
 
@@ -213,7 +256,7 @@ def test_downscale_method_default(temp_dir, sample_2d_image):
 @pytest.mark.parametrize("invalid_method", ["bicubic", "lanczos", "invalid", ""])
 def test_downscale_method_invalid_value(temp_dir, sample_2d_image, invalid_method):
     """Test that invalid downscale method values are handled appropriately.
-    
+
     Note: The Literal type annotation provides compile-time type checking,
     but at runtime, invalid values are accepted but ignored (defaulting to gaussian behavior).
     This test verifies the current implementation behavior.
@@ -232,15 +275,15 @@ def test_downscale_method_invalid_value(temp_dir, sample_2d_image, invalid_metho
         downscale_method=invalid_method,  # type: ignore[arg-type]
         downscale_levels=2,
     )
-    
+
     # Should initialize successfully (runtime doesn't validate the method)
     assert writer.path == Path(path)
     assert writer.downscale_levels == 2
-    
+
     # Should be able to create arrays and write (defaults to gaussian behavior)
     arrays = writer._create_downscaled_arrays()
     assert len(arrays) == 3  # Original + 2 downscaled levels
-    
+
     writer.write()
     assert path.exists()
 
@@ -297,7 +340,6 @@ def test_downscaled_arrays_gaussian_vs_nearest(temp_dir, sample_2d_image):
     assert not np.array_equal(gaussian_downscaled, nearest_downscaled)
 
 
-
 def test_downscale_method_preserves_other_dimensions(temp_dir):
     """Test that downscale method works correctly with multi-dimensional images."""
     # Create a 4D image (t, c, y, x)
@@ -347,7 +389,7 @@ def test_downscale_method_with_coordinate_transformations(temp_dir, sample_2d_im
     # Should work without errors and coordinate transformations should be set
     assert writer.coordinate_transformations is not None
     assert writer.downscale_levels == 2
-    
+
     # Test coordinate transformations for levels
     level_transformations = writer._create_coordinate_transformations_for_levels()
     assert len(level_transformations) >= 1
@@ -461,21 +503,21 @@ def test_create_downscaled_arrays_no_downscaling(temp_dir, sample_2d_image):
     # Should have only 1 level: original
     assert len(arrays) == 1
     assert arrays[0].shape == sample_2d_image.shape
-    
+
     # Write the zarr file to create the actual group structure
     writer.write()
-    
+
     # Verify the zarr file was created
     assert path.exists()
-    
+
     # Open the zarr group and verify it has only 1 array (original, no downscaling)
     group = zarr.open_group(str(path), mode="r")
-    
+
     # Should have only array "0" for the original level
     assert "0" in group  # Original level
     assert "1" not in group  # No first downscale level
     assert "2" not in group  # No second downscale level
-    
+
     # Verify we have exactly 1 array
     array_keys = [key for key in group.array_keys()]
     assert len(array_keys) == 1
@@ -498,22 +540,22 @@ def test_init_with_downscale_levels(temp_dir, sample_2d_image):
     )
 
     assert writer.downscale_levels == downscale_levels
-    
+
     # Write the zarr file to create the actual group structure
     writer.write()
-    
+
     # Verify the zarr file was created
     assert path.exists()
-    
+
     # Open the zarr group and verify it has 4 arrays (original + 3 downscale levels)
     group = zarr.open_group(str(path), mode="r")
-    
+
     # Should have arrays "0", "1", "2", "3" for the 4 levels
     assert "0" in group  # Original level
-    assert "1" in group  # First downscale level  
+    assert "1" in group  # First downscale level
     assert "2" in group  # Second downscale level
     assert "3" in group  # Third downscale level
-    
+
     # Verify we have exactly 4 arrays
     array_keys = [key for key in group.array_keys()]
     assert len(array_keys) == 4

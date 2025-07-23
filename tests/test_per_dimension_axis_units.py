@@ -15,16 +15,18 @@ class TestPerDimensionAxisUnits:
         """Set up test environment."""
         self.temp_dir = Path(tempfile.mkdtemp())
         self.output_path = self.temp_dir / "test_output.zarr"
-        self.test_image = np.random.randint(0, 255, size=(2, 10, 64, 64), dtype=np.uint8)
+        self.test_image = np.random.randint(
+            0, 255, size=(2, 10, 64, 64), dtype=np.uint8
+        )
         self.dims = ["c", "z", "y", "x"]
 
     def test_per_dimension_axis_units(self):
         """Test per-dimension axis units specification."""
         axis_units = {
-            "c": None,            # Channel has no unit (automatically handled)
-            "z": "micrometer",    # Z dimension in micrometers
-            "y": "micrometer",    # Y dimension in micrometers  
-            "x": "micrometer"     # X dimension in micrometers
+            "c": None,  # Channel has no unit (automatically handled)
+            "z": "micrometer",  # Z dimension in micrometers
+            "y": "micrometer",  # Y dimension in micrometers
+            "x": "micrometer",  # X dimension in micrometers
         }
 
         ome_zarr_image = OmeZarrImage(
@@ -37,7 +39,7 @@ class TestPerDimensionAxisUnits:
 
         # Check that axes were created correctly
         assert len(ome_zarr_image.axes) == 4
-        
+
         # Check each axis
         c_axis = ome_zarr_image.axes[0]
         assert c_axis.name == "c"
@@ -63,12 +65,12 @@ class TestPerDimensionAxisUnits:
         """Test per-dimension axis units with time dimension."""
         test_image = np.random.randint(0, 255, size=(5, 10, 64, 64), dtype=np.uint8)
         dims = ["t", "z", "y", "x"]
-        
+
         axis_units = {
             "t": "second",
             "z": "micrometer",
             "y": "micrometer",
-            "x": "micrometer"
+            "x": "micrometer",
         }
 
         ome_zarr_image = OmeZarrImage(
@@ -81,7 +83,7 @@ class TestPerDimensionAxisUnits:
 
         # Check that axes were created correctly
         assert len(ome_zarr_image.axes) == 4
-        
+
         t_axis = ome_zarr_image.axes[0]
         assert t_axis.name == "t"
         assert t_axis.type == "time"
@@ -91,9 +93,9 @@ class TestPerDimensionAxisUnits:
         """Test per-dimension axis units with different spatial units."""
         axis_units = {
             "c": None,
-            "z": "nanometer",     # Different unit for Z
-            "y": "micrometer",    # Different unit for Y
-            "x": "millimeter"     # Different unit for X
+            "z": "nanometer",  # Different unit for Z
+            "y": "micrometer",  # Different unit for Y
+            "x": "millimeter",  # Different unit for X
         }
 
         ome_zarr_image = OmeZarrImage(
@@ -117,10 +119,10 @@ class TestPerDimensionAxisUnits:
     def test_per_dimension_case_insensitive(self):
         """Test that dimension matching is case insensitive."""
         axis_units = {
-            "C": None,            # Uppercase C
-            "Z": "micrometer",    # Uppercase Z
-            "y": "micrometer",    # Lowercase y
-            "X": "micrometer"     # Uppercase X
+            "C": None,  # Uppercase C
+            "Z": "micrometer",  # Uppercase Z
+            "y": "micrometer",  # Lowercase y
+            "X": "micrometer",  # Uppercase X
         }
 
         ome_zarr_image = OmeZarrImage(
@@ -139,11 +141,13 @@ class TestPerDimensionAxisUnits:
         axis_units = {
             "c": None,
             "z": "micrometer",
-            "y": "micrometer"
+            "y": "micrometer",
             # Missing x unit
         }
 
-        with pytest.raises(ValueError, match="Spatial dimension 'x' requires a unit specification"):
+        with pytest.raises(
+            ValueError, match="Spatial dimension 'x' requires a unit specification"
+        ):
             OmeZarrImage(
                 path=self.output_path,
                 image=self.test_image,
@@ -156,15 +160,17 @@ class TestPerDimensionAxisUnits:
         """Test error when time dimension is missing a unit."""
         test_image = np.random.randint(0, 255, size=(5, 10, 64, 64), dtype=np.uint8)
         dims = ["t", "z", "y", "x"]
-        
+
         axis_units = {
             # Missing t unit
             "z": "micrometer",
             "y": "micrometer",
-            "x": "micrometer"
+            "x": "micrometer",
         }
 
-        with pytest.raises(ValueError, match="Time dimension 't' requires a unit specification"):
+        with pytest.raises(
+            ValueError, match="Time dimension 't' requires a unit specification"
+        ):
             OmeZarrImage(
                 path=self.output_path,
                 image=test_image,
@@ -177,8 +183,8 @@ class TestPerDimensionAxisUnits:
         """Test that channel dimension is automatically handled without requiring unit."""
         axis_units = {
             "z": "micrometer",
-            "y": "micrometer", 
-            "x": "micrometer"
+            "y": "micrometer",
+            "x": "micrometer",
             # Note: no "c" entry - should be handled automatically
         }
 

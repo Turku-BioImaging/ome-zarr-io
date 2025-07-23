@@ -67,7 +67,7 @@ class TestChunksAndShardsAPI:
         output_path = tmp_path / "test_chunks_shards_together.zarr"
         dims = ["c", "z", "y", "x"]
         axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
-        
+
         # Use compatible chunks and shards
         # Shards must be divisible by chunks
         custom_chunks = (1, 2, 8, 8)
@@ -80,7 +80,7 @@ class TestChunksAndShardsAPI:
             axis_units=axis_units,
             overwrite=True,
         )
-        
+
         # This should work without errors
         writer.write(chunks=custom_chunks, shards=custom_shards)
 
@@ -108,13 +108,15 @@ class TestChunksAndShardsAPI:
 
         # Verify chunks are applied to all levels
         group = zarr.open_group(str(output_path), mode="r")
-        
+
         for level_name in group.keys():
             if level_name.isdigit():
                 level_array = group[level_name]
                 assert level_array.chunks == custom_chunks
 
-    def test_no_chunks_or_shards_parameters_in_constructor(self, tmp_path, sample_2d_image):
+    def test_no_chunks_or_shards_parameters_in_constructor(
+        self, tmp_path, sample_2d_image
+    ):
         """Test that chunks and shards are no longer accepted in constructor."""
         output_path = tmp_path / "test_constructor.zarr"
         dims = ["y", "x"]
@@ -128,14 +130,14 @@ class TestChunksAndShardsAPI:
             axis_units=axis_units,
             overwrite=True,
         )
-        
+
         # Verify the object doesn't have chunks/shards attributes
         assert not hasattr(writer, "chunks")
         assert not hasattr(writer, "shards")
-        
+
         # Write should work without parameters
         writer.write()
-        
+
         # Verify file was created
         assert output_path.exists()
 

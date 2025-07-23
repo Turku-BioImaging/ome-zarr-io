@@ -152,7 +152,29 @@ class OmeZarrImage:
         arrays = [self.image]  # Level 0: original resolution
         current_array = self.image
 
-        for level in range(1, self.downscale_levels + 1):
+
+        # Create a rescaling function that only operates on Y and X dimensions
+        def rescale_yx_block(block, order: int):
+            """
+            Rescale only the last two dimensions of a block by the downscale factor. Parameter `order` is the order of interpolation. 0 = nearest-neighbor, 1 = bilinear See `https://scikit-image.org/docs/stable/api/skimage.transform.html#skimage.transform.warp` for more details.
+            """
+            
+            # Create scale factors: 1 for all dimensions except last two
+            scale_factors = [1.0] * block.ndim
+            scale_factor = 1.0 / downscale_factor
+            scale_factors[-2] = scale_factor  # Y dimension
+            scale_factors[-1] = scale_factor  # X dimension
+
+            return rescale(
+                block,
+                scale=scale_factors,
+                order=order,
+                preserve_range=True,
+                anti_aliasing=False,  # Already applied Gaussian filter
+                channel_axis=None,
+            ).astype(block.dtype)
+
+        for _ in range(1, self.downscale_levels + 1):
             
             downscale_factor = self.downscale_factor  # Capture for closure
 
@@ -170,7 +192,8 @@ class OmeZarrImage:
             # Validate downscale_method, if not set silently to default Gaussian
             if self.downscale_method not in {"gaussian", "nearest"}:
                 self.downscale_method = "gaussian"
-            
+
+
             # If downscale_method is default Gaussian:
             if self.downscale_method == 'gaussian':
 
@@ -184,24 +207,6 @@ class OmeZarrImage:
                 filtered_array = dask_image.ndfilters.gaussian_filter(
                     current_array, sigma=sigma, mode="nearest"
                 )
-
-                # Create a rescaling function that only operates on Y and X dimensions
-                def rescale_yx_block(block, block_id=None):
-                    """Rescale only the last two dimensions of a block by the downscale factor."""
-                    
-                    # Create scale factors: 1 for all dimensions except last two
-                    scale_factors = [1.0] * block.ndim
-                    scale_factor = 1.0 / downscale_factor
-                    scale_factors[-2] = scale_factor  # Y dimension
-                    scale_factors[-1] = scale_factor  # X dimension
-
-                    return rescale(
-                        block,
-                        scale=scale_factors,
-                        preserve_range=True,
-                        anti_aliasing=False,  # Already applied Gaussian filter
-                        channel_axis=None,
-                    ).astype(block.dtype)
 
                 # Calculate the expected output shape
                 new_shape = list(current_array.shape)
@@ -226,6 +231,7 @@ class OmeZarrImage:
                         drop_axis=None,
                         new_axis=None,
                         meta=np.array([], dtype=filtered_array.dtype),
+                        order=1 # use bicubic interpolation on Gaussian-filtered data
                     )
 
                     arrays.append(current_array)
@@ -236,19 +242,6 @@ class OmeZarrImage:
             
             # If downscale_method is nearest-neighbor:
             elif self.downscale_method == "nearest":
-
-                def resize_yx_block(block, block_info = None, block_id=None):
-                    """Resizes the N-dimensional images using nearest neighbor interpolation (order == 0)."""
-                    
-                    # Extract the target shape of the output chunk from the block-info 
-                    output_shape = block_info[None]['chunk-shape']
-
-                    return resize(
-                        block,
-                        output_shape=output_shape,
-                        order=0,  # nearest-neighbor interpolation
-                        # anti_aliasing=False,  # By default because data type is Bool
-                    ).astype(block.dtype)
                     
                 # Calculate the expected output shape
                 new_shape = list(current_array.shape)
@@ -266,13 +259,14 @@ class OmeZarrImage:
 
                 try:
                     current_array = da.map_blocks(
-                        resize_yx_block,
+                        rescale_yx_block,
                         current_array,
                         dtype=current_array.dtype,
                         chunks=tuple(new_chunks),
                         drop_axis=None,
                         new_axis=None,
                         meta=np.array([], dtype=current_array.dtype),
+                        order=0, # nearest-neighbor interpolation
                     )
 
                     arrays.append(current_array)

@@ -653,10 +653,10 @@ class OmeZarrImage:
         # Write metadata to zarr attributes
         root_group.attrs.update(metadata.to_dict())
 
-        zarr.consolidate_metadata(str(self.path))
+        # zarr.consolidate_metadata(str(self.path))
 
-        print(f"✅ Successfully wrote OME-Zarr to: {self.path}")
-        print(f"   - {len(arrays)} resolution levels")
-        print(f"   - Shape: {self.image.shape}")
-        print(f"   - Dimensions: {self.dims}")
-        print(f"   - Axes: {[(ax.name, ax.type, ax.unit) for ax in self.axes]}")
+        # print(f"✅ Successfully wrote OME-Zarr to: {self.path}")
+        # print(f"   - {len(arrays)} resolution levels")
+        # print(f"   - Shape: {self.image.shape}")
+        # print(f"   - Dimensions: {self.dims}")
+        # print(f"   - Axes: {[(ax.name, ax.type, ax.unit) for ax in self.axes]}")

@@ -307,7 +307,7 @@ class Downscaler:
             Downscaled array or None if operation failed.
         """
         if self._should_use_gpu():
-            return self._downscale_gaussian_gpu(current_array, rescale_func)
+            return self._downscale_gaussian_gpu(current_array)
         else:
             return self._downscale_gaussian_cpu(current_array, rescale_func)
 
@@ -359,12 +359,11 @@ class Downscaler:
         except (ValueError, RuntimeError):
             return None
 
-    def _downscale_gaussian_gpu(self, current_array: da.Array, rescale_func) -> Optional[da.Array]:
+    def _downscale_gaussian_gpu(self, current_array: da.Array) -> Optional[da.Array]:
         """Apply Gaussian filtering followed by downscaling on GPU.
         
         Args:
             current_array: Current array to downscale.
-            rescale_func: Function to use for rescaling blocks (unused in GPU implementation).
             
         Returns:
             Downscaled array or None if operation failed.
@@ -375,75 +374,22 @@ class Downscaler:
         except ImportError:
             return None
             
-        sigma = [0.0] * current_array.ndim
-        sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
-        sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension
-
-        # Rechunk for better GPU performance - use larger chunks for better throughput
-        # Use a memory-based chunking strategy that dask can understand
+        # Calculate Gaussian filter sigma for anti-aliasing
+        sigma = self._calculate_gaussian_sigma(current_array.ndim)
+        
+        # Optimize array chunking for GPU processing
         current_array = current_array.rechunk("100MB")
-
-        # Calculate new chunk sizes for the output
-        new_chunks = list(current_array.chunks)
-        new_chunks[-2] = tuple(
-            max(1, int(chunk_size / self.downscale_factor))
-            for chunk_size in new_chunks[-2]
-        )
-        new_chunks[-1] = tuple(
-            max(1, int(chunk_size / self.downscale_factor))
-            for chunk_size in new_chunks[-1]
-        )
+        
+        # Calculate output chunk sizes
+        new_chunks = self._calculate_output_chunks(current_array.chunks)
 
         def filter_and_rescale(block, sigma_list, downscale_factor, cuda_device_id):
-            """Apply both Gaussian filtering and rescaling in a single GPU operation.
-            
-            This combines both operations to minimize GPU memory transfers and
-            maximize GPU utilization.
-            """
-            if block.size == 0:  # Handle empty blocks
-                return block
-            
-            # Use the specified CUDA device
-            with cp.cuda.Device(cuda_device_id):
-                # Convert to CuPy array for GPU processing (single conversion)
-                gpu_block = cp.asarray(block)
-                
-                try:
-                    # Step 1: Apply Gaussian filter on GPU
-                    filtered_gpu = ndi.gaussian_filter(gpu_block, sigma=sigma_list, mode="nearest")
-                    
-                    # Step 2: Apply rescaling on GPU (same GPU memory, no transfer)
-                    zoom_factors = [1.0] * block.ndim
-                    zoom_factor = 1.0 / downscale_factor
-                    zoom_factors[-2] = zoom_factor  # Y dimension
-                    zoom_factors[-1] = zoom_factor  # X dimension
-                    
-                    # Use order=1 for bicubic interpolation, prefilter=False since we already filtered
-                    rescaled_gpu = ndi.zoom(filtered_gpu, zoom=zoom_factors, order=1, prefilter=False)
-                    
-                    # Single conversion back to NumPy
-                    result = cp.asnumpy(rescaled_gpu).astype(block.dtype)
-                    
-                    # Clear GPU memory explicitly for better memory management
-                    del gpu_block, filtered_gpu, rescaled_gpu
-                    
-                    return result
-                    
-                except Exception as e:
-                    # Clean up GPU memory before re-raising the error
-                    import gc
-                    gc.collect()
-                    try:
-                        cp.get_default_memory_pool().free_all_blocks()
-                    except AttributeError:
-                        # Older CuPy versions
-                        cp.get_default_memory_pool().free_all_free()
-                    
-                    # Re-raise the original GPU error instead of falling back to CPU
-                    raise RuntimeError(f"GPU operation failed on device {cuda_device_id}: {e}") from e
+            """Apply Gaussian filtering and rescaling in a single GPU operation."""
+            return self._process_block_on_gpu(
+                block, sigma_list, downscale_factor, cuda_device_id, cp, ndi
+            )
 
         try:
-            # Single map_blocks operation combining both filtering and rescaling
             return da.map_blocks(
                 filter_and_rescale,
                 current_array,
@@ -458,6 +404,117 @@ class Downscaler:
             )
         except (ValueError, RuntimeError):
             return None
+
+    def _calculate_gaussian_sigma(self, ndim: int) -> List[float]:
+        """Calculate Gaussian filter sigma values for anti-aliasing.
+        
+        Args:
+            ndim: Number of dimensions in the array.
+            
+        Returns:
+            List of sigma values, with non-zero values only for Y and X dimensions.
+        """
+        sigma = [0.0] * ndim
+        sigma_value = (self.downscale_factor - 1) / 4.0
+        sigma[-2] = sigma_value  # Y dimension
+        sigma[-1] = sigma_value  # X dimension
+        return sigma
+
+    def _calculate_output_chunks(self, input_chunks: tuple) -> List[tuple]:
+        """Calculate output chunk sizes after downscaling.
+        
+        Args:
+            input_chunks: Input array chunk sizes.
+            
+        Returns:
+            List of output chunk sizes.
+        """
+        new_chunks = list(input_chunks)
+        # Downscale Y and X dimensions (last two)
+        for dim_idx in [-2, -1]:
+            new_chunks[dim_idx] = tuple(
+                max(1, int(chunk_size / self.downscale_factor))
+                for chunk_size in new_chunks[dim_idx]
+            )
+        return new_chunks
+
+    def _process_block_on_gpu(self, block, sigma_list, downscale_factor, cuda_device_id, cp, ndi):
+        """Process a single block on GPU with error handling.
+        
+        Args:
+            block: Input block to process.
+            sigma_list: Gaussian filter sigma values.
+            downscale_factor: Factor by which to downscale.
+            cuda_device_id: CUDA device ID to use.
+            cp: CuPy module.
+            ndi: CuPy scipy ndimage module.
+            
+        Returns:
+            Processed block as NumPy array.
+        """
+        if block.size == 0:
+            return block
+        
+        with cp.cuda.Device(cuda_device_id):
+            gpu_block = cp.asarray(block)
+            
+            try:
+                # Apply Gaussian filter
+                filtered_gpu = ndi.gaussian_filter(
+                    gpu_block, sigma=sigma_list, mode="nearest"
+                )
+                
+                # Calculate zoom factors for rescaling
+                zoom_factors = self._calculate_zoom_factors(block.ndim, downscale_factor)
+                
+                # Apply rescaling with bilinear interpolation
+                rescaled_gpu = ndi.zoom(
+                    filtered_gpu, zoom=zoom_factors, order=1, prefilter=False
+                )
+                
+                # Convert back to NumPy with original dtype
+                result = cp.asnumpy(rescaled_gpu).astype(block.dtype)
+                
+                # Explicit cleanup
+                del gpu_block, filtered_gpu, rescaled_gpu
+                
+                return result
+                
+            except Exception as e:
+                self._cleanup_gpu_memory(cp)
+                raise RuntimeError(
+                    f"GPU operation failed on device {cuda_device_id}: {e}"
+                ) from e
+
+    def _calculate_zoom_factors(self, ndim: int, downscale_factor: float) -> List[float]:
+        """Calculate zoom factors for rescaling operation.
+        
+        Args:
+            ndim: Number of dimensions in the block.
+            downscale_factor: Factor by which to downscale.
+            
+        Returns:
+            List of zoom factors for each dimension.
+        """
+        zoom_factors = [1.0] * ndim
+        zoom_factor = 1.0 / downscale_factor
+        zoom_factors[-2] = zoom_factor  # Y dimension
+        zoom_factors[-1] = zoom_factor  # X dimension
+        return zoom_factors
+
+    def _cleanup_gpu_memory(self, cp):
+        """Clean up GPU memory after an error.
+        
+        Args:
+            cp: CuPy module.
+        """
+        import gc
+        gc.collect()
+        try:
+            cp.get_default_memory_pool().free_all_blocks()
+        except AttributeError:
+            # Fallback for older CuPy versions
+            cp.get_default_memory_pool().free_all_free()
 
 
     def _downscale_nearest(

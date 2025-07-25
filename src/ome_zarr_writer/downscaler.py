@@ -6,8 +6,6 @@ import dask.array as da
 import dask_image.ndfilters
 from skimage.transform import rescale
 from .schema_models import ScaleTransformation
-import cupy as cp
-import cupyx.scipy.ndimage as ndi
 
 
 class Downscaler:
@@ -371,6 +369,12 @@ class Downscaler:
         Returns:
             Downscaled array or None if operation failed.
         """
+        try:
+            import cupy as cp
+            import cupyx.scipy.ndimage as ndi
+        except ImportError:
+            return None
+            
         sigma = [0.0] * current_array.ndim
         sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
         sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension

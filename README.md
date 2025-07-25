@@ -39,6 +39,22 @@ git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
 pip install -r requirements.txt
 ```
 
+### GPU Support (Optional)
+
+For GPU-accelerated downscaling, install with CuPy:
+
+```bash
+# Install with GPU support
+pip install -e ".[gpu]"
+
+# Or install CuPy for your CUDA version separately
+pip install cupy-cuda11x
+pip install cupy-cuda12x
+
+```
+
+**Note:** GPU support requires NVIDIA CUDA-compatible hardware and drivers. If CuPy is not available, the library will automatically fall back to CPU computation.
+
 ## Downscaling Methods
 
 ### Gaussian Filtering (Default)
@@ -57,6 +73,15 @@ downscale_method='gaussian'
 
 # For label/segmentation images
 downscale_method='nearest'
+
+# For GPU-accelerated processing (requires CuPy)
+from ome_zarr_writer import OmeZarrImage
+OmeZarrImage(
+    image_data, 
+    axes=axes, 
+    downscale_method='gaussian',
+    device='cuda'  # Use GPU for downscaling
+)
 ```
 
 ## Quick Start

@@ -21,6 +21,7 @@ class Downscaler:
         downscale_factor: float = 2.0,
         downscale_method: Literal["gaussian", "nearest"] = "gaussian",
         downscale_levels: Optional[int] = None,
+        device: Literal["cpu", "cuda"] = "cpu"
     ):
         """Initialize the downscaler.
 
@@ -28,6 +29,7 @@ class Downscaler:
             downscale_factor: Factor by which to downscale each level (default: 2.0).
             downscale_method: Method to use for downscaling ("gaussian" or "nearest").
             downscale_levels: Number of downscale levels to create. If None, no downscaling.
+            device: Device to use for computation ("cpu" or "cuda"). Default: "cpu".
         """
         if downscale_factor <= 1.0:
             raise ValueError(f"downscale_factor must be > 1.0, got {downscale_factor}")
@@ -35,6 +37,36 @@ class Downscaler:
         self.downscale_factor = downscale_factor
         self.downscale_method = downscale_method
         self.downscale_levels = downscale_levels
+        self.device = device
+        
+        # Validate device availability
+        self._validate_device()
+
+    def _validate_device(self) -> None:
+        """Validate that the requested device is available.
+        
+        Raises:
+            ValueError: If CUDA is requested but not available.
+        """
+        if self.device == "cuda":
+            # For now, we'll add a placeholder for CUDA validation
+            # TODO: Implement CUDA availability check when GPU support is added
+            import warnings
+            warnings.warn(
+                "CUDA device requested but GPU support is not yet implemented. "
+                "Falling back to CPU computation.",
+                UserWarning
+            )
+            # Temporarily fall back to CPU until GPU implementation is ready
+            self.device = "cpu"
+
+    def _should_use_gpu(self) -> bool:
+        """Check if GPU should be used for computation.
+        
+        Returns:
+            True if GPU should be used, False otherwise.
+        """
+        return self.device == "cuda"
 
     def validate_downscale_levels(self, image_shape: tuple) -> int:
         """Validate and adjust downscale levels based on image dimensions.
@@ -174,6 +206,21 @@ class Downscaler:
         Returns:
             Downscaled array or None if operation failed.
         """
+        if self._should_use_gpu():
+            return self._downscale_gaussian_gpu(current_array, rescale_func)
+        else:
+            return self._downscale_gaussian_cpu(current_array, rescale_func)
+
+    def _downscale_gaussian_cpu(self, current_array: da.Array, rescale_func) -> Optional[da.Array]:
+        """Apply Gaussian filtering followed by downscaling on CPU.
+        
+        Args:
+            current_array: Current array to downscale.
+            rescale_func: Function to use for rescaling blocks.
+            
+        Returns:
+            Downscaled array or None if operation failed.
+        """
         # Apply Gaussian filter to prevent aliasing
         # Sigma is proportional to the downscale factor
         # For factor=2, sigma=0.5; for factor=4, sigma=1.0, etc.
@@ -210,8 +257,37 @@ class Downscaler:
         except (ValueError, RuntimeError):
             return None
 
+    def _downscale_gaussian_gpu(self, current_array: da.Array, rescale_func) -> Optional[da.Array]:
+        """Apply Gaussian filtering followed by downscaling on GPU.
+        
+        Args:
+            current_array: Current array to downscale.
+            rescale_func: Function to use for rescaling blocks.
+            
+        Returns:
+            Downscaled array or None if operation failed.
+        """
+        # TODO: Implement GPU-accelerated Gaussian filtering and downscaling
+        # For now, fall back to CPU implementation
+        return self._downscale_gaussian_cpu(current_array, rescale_func)
+
     def _downscale_nearest(self, current_array: da.Array, rescale_func) -> Optional[da.Array]:
         """Apply nearest-neighbor downscaling.
+        
+        Args:
+            current_array: Current array to downscale.
+            rescale_func: Function to use for rescaling blocks.
+            
+        Returns:
+            Downscaled array or None if operation failed.
+        """
+        if self._should_use_gpu():
+            return self._downscale_nearest_gpu(current_array, rescale_func)
+        else:
+            return self._downscale_nearest_cpu(current_array, rescale_func)
+
+    def _downscale_nearest_cpu(self, current_array: da.Array, rescale_func) -> Optional[da.Array]:
+        """Apply nearest-neighbor downscaling on CPU.
         
         Args:
             current_array: Current array to downscale.
@@ -244,6 +320,20 @@ class Downscaler:
             )
         except (ValueError, RuntimeError):
             return None
+
+    def _downscale_nearest_gpu(self, current_array: da.Array, rescale_func) -> Optional[da.Array]:
+        """Apply nearest-neighbor downscaling on GPU.
+        
+        Args:
+            current_array: Current array to downscale.
+            rescale_func: Function to use for rescaling blocks.
+            
+        Returns:
+            Downscaled array or None if operation failed.
+        """
+        # TODO: Implement GPU-accelerated nearest-neighbor downscaling
+        # For now, fall back to CPU implementation
+        return self._downscale_nearest_cpu(current_array, rescale_func)
 
     def create_coordinate_transformations_for_levels(
         self,

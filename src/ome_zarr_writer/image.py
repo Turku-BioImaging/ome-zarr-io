@@ -38,6 +38,7 @@ class OmeZarrImage:
         downscale_factor: float = 2.0,
         overwrite: bool = False,
         omero_metadata: Optional[Omero] = None,
+        device: Literal["cpu", "cuda"] = "cpu",
     ):
         """Initialize the OME-Zarr writer.
 
@@ -61,6 +62,8 @@ class OmeZarrImage:
             overwrite: Whether to overwrite existing files.
             omero_metadata: Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
+            device: Device to use for computations. Either "cpu" or "cuda" (default: "cpu").
+                If "cuda" is specified but CUDA is not available, will fall back to CPU with a warning.
         """
         self.path = Path(path)
         # Convert numpy array to dask array if necessary
@@ -84,6 +87,7 @@ class OmeZarrImage:
             downscale_factor=downscale_factor,
             downscale_method=downscale_method,
             downscale_levels=downscale_levels,
+            device=device,
         )
 
         # Store OMERO metadata
@@ -104,6 +108,12 @@ class OmeZarrImage:
         """Get the downscale method from the downscaler."""
         from typing import cast
         return cast(Literal["gaussian", "nearest"], self.downscaler.downscale_method)
+
+    @property
+    def device(self) -> Literal["cpu", "cuda"]:
+        """Get the device from the downscaler."""
+        from typing import cast
+        return cast(Literal["cpu", "cuda"], self.downscaler.device)
 
     def _create_downscaled_arrays(self) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.

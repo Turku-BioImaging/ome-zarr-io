@@ -389,21 +389,18 @@ class Downscaler:
                 block, sigma_list, downscale_factor, cuda_device_id, cp, ndi
             )
 
-        try:
-            return da.map_blocks(
-                filter_and_rescale,
-                current_array,
-                sigma_list=sigma,
-                downscale_factor=self.downscale_factor,
-                cuda_device_id=self.cuda_device_id,
-                dtype=current_array.dtype,
-                chunks=new_chunks,
-                drop_axis=None,
-                new_axis=None,
-                meta=np.array([], dtype=current_array.dtype),
-            )
-        except (ValueError, RuntimeError):
-            return None
+        return da.map_blocks(
+            filter_and_rescale,
+            current_array,
+            sigma_list=sigma,
+            downscale_factor=self.downscale_factor,
+            cuda_device_id=self.cuda_device_id,
+            dtype=current_array.dtype,
+            chunks=new_chunks,
+            drop_axis=None,
+            new_axis=None,
+            meta=np.array([], dtype=current_array.dtype),
+        )
 
     def _calculate_gaussian_sigma(self, ndim: int) -> List[float]:
         """Calculate Gaussian filter sigma values for anti-aliasing.
@@ -583,9 +580,56 @@ class Downscaler:
         Returns:
             Downscaled array or None if operation failed.
         """
-        # TODO: Implement GPU-accelerated nearest-neighbor downscaling
-        # For now, fall back to CPU implementation
-        return self._downscale_nearest_cpu(current_array, rescale_func)
+        try:
+            import cupy as cp
+            import cupyx.scipy.ndimage as ndi
+        except ImportError:
+            return None
+        
+        def rescale_yx_block(block, cuda_device_id):
+            """Rescale block using nearest-neighbor interpolation on GPU."""
+            if block.size == 0:
+                return block
+                
+            with cp.cuda.Device(cuda_device_id):
+                try:
+                    array_cp = cp.asarray(block)
+                    # Calculate zoom factors for nearest-neighbor downscaling
+                    zoom_factors = [1.0] * array_cp.ndim
+                    zoom_factor = 1.0 / self.downscale_factor
+                    zoom_factors[-2] = zoom_factor  # Y dimension
+                    zoom_factors[-1] = zoom_factor  # X dimension
+                    
+                    # Use cupyx.scipy.ndimage.zoom for nearest-neighbor interpolation
+                    rescaled_gpu = ndi.zoom(array_cp, zoom_factors, order=0, prefilter=False)
+                    result = cp.asnumpy(rescaled_gpu).astype(block.dtype)
+                    
+                    # Explicit cleanup
+                    del array_cp, rescaled_gpu
+                    
+                    return result
+                    
+                except Exception as e:
+                    self._cleanup_gpu_memory(cp)
+                    raise RuntimeError(
+                        f"GPU nearest-neighbor operation failed on device {cuda_device_id}: {e}"
+                    ) from e
+
+        
+        current_array = current_array.rechunk("100MB")
+        new_chunks = self._calculate_output_chunks(current_array.chunks)
+
+        return da.map_blocks(
+            rescale_yx_block,
+            current_array,
+            cuda_device_id=self.cuda_device_id,
+            dtype=current_array.dtype,
+            chunks=new_chunks,
+            drop_axis=None,
+            new_axis=None,
+            meta=np.array([], dtype=current_array.dtype),
+        )
+
 
     def create_coordinate_transformations_for_levels(
         self,

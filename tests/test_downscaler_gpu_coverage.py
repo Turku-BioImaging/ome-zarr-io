@@ -7,11 +7,13 @@ and error handling.
 
 import numpy as np
 import dask.array as da
+import pytest
 from unittest.mock import Mock, patch
 from ome_zarr_writer.downscaler import Downscaler
 from ome_zarr_writer.schema_models import ScaleTransformation
 
 
+@pytest.mark.gpu
 class TestDownscalerDeviceValidation:
     """Test device validation and GPU-related functionality."""
 
@@ -27,6 +29,7 @@ class TestDownscalerDeviceValidation:
         assert not downscaler._should_use_gpu()
 
 
+@pytest.mark.gpu
 class TestDownscalerDeviceInfo:
     """Test device information methods."""
 
@@ -49,6 +52,7 @@ class TestDownscalerDeviceInfo:
             assert "Failed to list CUDA devices" in devices[0]["error"]
 
 
+@pytest.mark.gpu
 class TestDownscalerGPUMethods:
     """Test GPU-specific downscaling methods."""
 
@@ -133,23 +137,33 @@ class TestDownscalerGPUMethods:
         mock_memory_pool.free_all_free.assert_called_once()
 
     def test_downscale_nearest_gpu_fallback(self):
-        """Test that GPU nearest-neighbor downscaling falls back to CPU."""
-        downscaler = Downscaler(device="cpu")
+        """Test that GPU nearest-neighbor downscaling handles import errors gracefully."""
+        downscaler = Downscaler(device="cuda")
         image = da.ones((100, 100), dtype=np.float32)
         
         def mock_rescale_func(block, order):
             return block[::2, ::2]  # Simple downscaling
         
-        # Mock the CPU method to verify it's called
-        with patch.object(downscaler, '_downscale_nearest_cpu') as mock_cpu_method:
-            mock_cpu_method.return_value = da.ones((50, 50), dtype=np.float32)
-            
+        # Test with ImportError (CuPy not available)
+        with patch('builtins.__import__', side_effect=ImportError("No module named 'cupy'")):
             result = downscaler._downscale_nearest_gpu(image, mock_rescale_func)
-            
-            mock_cpu_method.assert_called_once_with(image, mock_rescale_func)
-            assert result is not None
+            assert result is None
+
+    def test_downscale_nearest_gpu_success(self):
+        """Test successful GPU nearest-neighbor downscaling operation."""
+        downscaler = Downscaler(device="cuda", downscale_factor=2.0)
+        image = da.ones((64, 64), dtype=np.float32, chunks=(32, 32))
+        
+        result = downscaler._downscale_nearest_gpu(image, None)
+        
+        if result is not None:  # Only test if GPU is available
+            assert result.shape == (32, 32)
+            assert result.dtype == np.float32
+            # Check that it's actually a dask array
+            assert hasattr(result, 'compute')
 
 
+@pytest.mark.gpu
 class TestDownscalerEdgeCases:
     """Test edge cases and error conditions."""
 

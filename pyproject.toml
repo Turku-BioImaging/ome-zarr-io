@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ome-zarr-writer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Write valid OME-Zarr 0.5 multiscale images"
 readme = "README.md"
 license = "MIT"
@@ -39,6 +39,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+gpu = [
+    "cupy-cuda12x",  # Replace '12x' with your specific CUDA version, e.g., 'cupy-cuda120'
+]
 dev = [
     "pytest>=6.0",
     "pytest-cov",

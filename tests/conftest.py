@@ -7,6 +7,32 @@ import tempfile
 import shutil
 
 
+def pytest_configure(config):
+    """Configure custom pytest markers."""
+    config.addinivalue_line(
+        "markers", "gpu: mark test as requiring GPU/CUDA hardware"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Automatically skip GPU tests when CUDA/CuPy is not available."""
+    # Check if CuPy is available and if we can detect CUDA devices
+    try:
+        import cupy
+        # Try to get device count to ensure CUDA is functional
+        device_count = cupy.cuda.runtime.getDeviceCount()
+        cuda_available = device_count > 0
+    except (ImportError, Exception):
+        cuda_available = False
+    
+    # Skip GPU tests if CUDA is not available
+    if not cuda_available:
+        skip_gpu = pytest.mark.skip(reason="CUDA/CuPy not available or no GPU devices found")
+        for item in items:
+            if "gpu" in item.keywords:
+                item.add_marker(skip_gpu)
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for tests."""

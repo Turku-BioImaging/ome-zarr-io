@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ome-zarr-writer"
-version = "0.3.0"
+version = "0.3.1"
 description = "Write valid OME-Zarr 0.5 multiscale images"
 readme = "README.md"
 license = "MIT"

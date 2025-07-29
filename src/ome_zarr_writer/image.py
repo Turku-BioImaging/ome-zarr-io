@@ -396,9 +396,10 @@ class OmeZarrImage:
         datasets = []
         for level, array in enumerate(arrays):
             # Convert dask array to numpy for zarr storage
-            array_data: np.ndarray = np.asarray(
-                array.compute() if hasattr(array, "compute") else array
-            )
+            # array_data: np.ndarray = np.asarray(
+            #     array.compute() if hasattr(array, "compute") else array
+            # )
+            array_data = array
 
             # Prepare zarr array creation arguments
             zarr_kwargs = {

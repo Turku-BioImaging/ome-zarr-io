@@ -61,11 +61,10 @@ class TestDownscalerGPUMethods:
 
     def test_gpu_gaus_downscale__if_no_cupy(self, create_2d_sample_image):
         downscaler = Downscaler(device="cpu")  # Even CPU can call GPU methods
-        
+
         # Mock the import to fail
         with patch('builtins.__import__', side_effect=ImportError("No module named 'cupy'")):
-            result = downscaler._downscale_gaussian_gpu(image)
-            
+            result = downscaler._downscale_gaussian_gpu(create_2d_sample_image)
             assert result is None
 
     def test_calculate_gaussian_sigma(self):
@@ -141,11 +140,9 @@ class TestDownscalerGPUMethods:
             result = downscaler._downscale_nearest_gpu(create_2d_sample_image, mock_rescale_func)
             assert result is None
 
-    def test_downscale_nearest_gpu__completion_to_dask_arr(self):
-        downscaler = Downscaler(device="cuda", downscale_factor=2.0)
-        image = da.ones((64, 64), dtype=np.float32, chunks=(32, 32))
-        
-        result = downscaler._downscale_nearest_gpu(image, None)
+    def test_downscale_nearest_gpu__completion_to_dask_arr(self, create_2d_sample_image):
+        downscaler = Downscaler(device="cuda", downscale_factor=2.0)        
+        result = downscaler._downscale_nearest_gpu(create_2d_sample_image, None)
         
         if result is not None: 
             assert result.shape == (32, 32)

@@ -9,11 +9,10 @@ from .schema_models import ScaleTransformation
 
 
 class Downscaler:
-    """Handles downscaling operations for creating multiscale image pyramids.
-
-    This class is responsible for creating downscaled versions of image arrays
-    using different interpolation methods (Gaussian filtering or nearest-neighbor)
-    and managing coordinate transformations for each resolution level.
+    """
+    This Downscaler class handles operations for:
+    - Creating downscaled versions of image arrays using interpolation methods.
+    - Managing coordinate transformations for each resolution level.
     """
 
     def __init__(
@@ -27,11 +26,15 @@ class Downscaler:
         """Initialize the downscaler.
 
         Args:
-            downscale_factor: Factor by which to downscale each level (default: 2.0).
-            downscale_method: Method to use for downscaling ("gaussian" or "nearest").
-            downscale_levels: Number of downscale levels to create. If None, no downscaling.
-            device: Device to use for computation ("cpu" or "cuda"). Default: "cpu".
-            cuda_device_id: Specific CUDA device ID to use. If None, uses default device.
+            downscale_factor: Factor by which to downscale each level. Default is 2.0.
+            downscale_method: Method used for downscaling. The options are:
+                - "gaussian" (default): applies a Gaussian blur before resizing.
+                - "nearest": uses nearest-neighbor downsampling.  
+            downscale_levels: Number of downscaled levels to create. If None, no downscaled levels are generated beyong the original.
+            device: Device to use for computation. The options are:
+                - "cpu" (default): uses CPU for processing.
+                - "cuda": uses GPU with CUDA support for processing.
+            cuda_device_id: ID of the specific CUDA device to use. If None, uses default device.
         """
         if downscale_factor <= 1.0:
             raise ValueError(f"downscale_factor must be > 1.0, got {downscale_factor}")
@@ -42,19 +45,12 @@ class Downscaler:
         self.device = device
         self.cuda_device_id = cuda_device_id
 
-        # Validate device availability
-        self._validate_device()
+        self._validate_requested_device_availability()
 
-    def _validate_device(self) -> None:
-        """Validate that the requested device is available.
-
-        Raises:
-            ValueError: If CUDA is requested but not available.
-        """
+    def _validate_requested_device_availability(self) -> None:
         if self.device == "cuda":
             try:
                 import cupy as cp
-                # Test if CUDA is actually available
                 num_devices = cp.cuda.runtime.getDeviceCount()
                 
                 if self.cuda_device_id is not None:
@@ -63,11 +59,9 @@ class Downscaler:
                             f"Invalid CUDA device ID {self.cuda_device_id}. "
                             f"Available devices: 0-{num_devices-1}"
                         )
-                    # Test if the specific device is accessible
                     with cp.cuda.Device(self.cuda_device_id):
                         cp.cuda.runtime.getDeviceProperties(self.cuda_device_id)
                 else:
-                    # Use default device (0)
                     self.cuda_device_id = 0
                     
             except (ImportError, Exception) as e:
@@ -80,20 +74,10 @@ class Downscaler:
                 self.device = "cpu"
                 self.cuda_device_id = None
 
-    def _should_use_gpu(self) -> bool:
-        """Check if GPU should be used for computation.
-
-        Returns:
-            True if GPU should be used, False otherwise.
-        """
+    def _use_gpu(self) -> bool:
         return self.device == "cuda"
 
-    def get_device_info(self) -> dict:
-        """Get information about the current computing device.
-        
-        Returns:
-            Dictionary containing device information.
-        """
+    def _device_info(self) -> dict:
         if not self._should_use_gpu():
             return {
                 "device_type": "cpu",
@@ -129,12 +113,7 @@ class Downscaler:
             }
 
     @staticmethod
-    def list_cuda_devices() -> List[dict]:
-        """List all available CUDA devices.
-        
-        Returns:
-            List of dictionaries containing information about each CUDA device.
-        """
+    def _cuda_devices_available() -> List[dict]:
         try:
             import cupy as cp
             num_devices = cp.cuda.runtime.getDeviceCount()
@@ -164,22 +143,18 @@ class Downscaler:
         except Exception as e:
             return [{"error": f"Failed to list CUDA devices: {e}"}]
 
-    def validate_downscale_levels(self, image_shape: tuple) -> int:
-        """Validate and adjust downscale levels based on image dimensions.
-
+    def validate_or_adjust_downscale_levels(self, image_shape: tuple) -> int:
+        """"
         Args:
             image_shape: Shape of the input image array.
-
         Returns:
             Validated number of downscale levels.
         """
         if self.downscale_levels is None or self.downscale_levels <= 0:
             return 0
 
-        # Get the size of the smallest spatial dimension (Y and X are last two)
         min_spatial_dim = min(image_shape[-2], image_shape[-1])
 
-        # Calculate maximum possible levels
         max_levels = 0
         test_size = min_spatial_dim
         while test_size >= self.downscale_factor:
@@ -192,7 +167,6 @@ class Downscaler:
             suggested_levels = max_levels
             suggested_factor = self.downscale_factor
 
-            # Try to find a smaller factor that would work
             for factor in [1.5, 1.25, 1.1]:
                 if factor >= self.downscale_factor:
                     continue
@@ -217,10 +191,10 @@ class Downscaler:
             return max_levels
 
         return self.downscale_levels
+        
 
-    def create_downscaled_arrays(self, image: da.Array) -> List[da.Array]:
-        """Create downscaled arrays for multiscale representation.
-
+    def create_downscaled_arrays_for_multiscale(self, image: da.Array) -> List[da.Array]:
+        """
         Creates a list of dask arrays where each subsequent array is downscaled
         by the specified downscale_factor in the last two dimensions (Y and X axes),
         while preserving all other dimensions (time, channel, Z). Uses Gaussian
@@ -233,61 +207,55 @@ class Downscaler:
             List of downscaled dask arrays. The first array is the original image,
             followed by progressively downscaled versions.
         """
-        # Validate downscale levels
-        validated_levels = self.validate_downscale_levels(image.shape)
+        validated_levels = self.validate_or_adjust_downscale_levels(image.shape)
 
         if validated_levels <= 0:
             return [image]
 
-        arrays = [image]  # Level 0: original resolution
+        arrays = [image]  
         current_array = image
 
-        # Create a rescaling function that only operates on Y and X dimensions
-        def rescale_yx_block(block, order: int):
+        def rescale_yx_block_nearest_neighbor_gpu(block, order: int):
             """
-            Rescale only the last two dimensions of a block by the downscale factor.
-            Parameter `order` is the order of interpolation. 0 = nearest-neighbor,
-            1 = bilinear. See skimage.transform.warp documentation for details.
+            Args:
+                block: The dask array block to rescale.
+                order: the order of interpolation.
+                    0 = nearest-neighbor,1 = bilinear.
+                    See skimage.transform.warp documentation for details.
             """
-            # Create scale factors: 1 for all dimensions except last two
             scale_factors = [1.0] * block.ndim
             scale_factor = 1.0 / self.downscale_factor
-            scale_factors[-2] = scale_factor  # Y dimension
-            scale_factors[-1] = scale_factor  # X dimension
+            scale_factors[-2] = scale_factor  
+            scale_factors[-1] = scale_factor  
 
             return rescale(
                 block,
                 scale=scale_factors,
                 order=order,
                 preserve_range=True,
-                anti_aliasing=False,  # Already applied Gaussian filter
+                anti_aliasing=False, 
                 channel_axis=None,
             ).astype(block.dtype)
 
         for _ in range(1, validated_levels + 1):
-            # Check if Y or X dimensions are too small to downscale further
             if (
                 current_array.shape[-2] / self.downscale_factor < 1
                 or current_array.shape[-1] / self.downscale_factor < 1
             ):
-                # Stop creating more levels if dimensions become too small
                 break
 
-            # Validate downscale_method, if not set silently to default Gaussian
             method = self.downscale_method
             if method not in {"gaussian", "nearest"}:
                 method = "gaussian"
 
-            # Apply the chosen downscale method
             if method == "gaussian":
                 current_array = self._downscale_gaussian(
-                    current_array, rescale_yx_block
+                    current_array, rescale_yx_block_nearest_neighbor_gpu
                 )
             elif method == "nearest":
-                current_array = self._downscale_nearest(current_array, rescale_yx_block)
+                current_array = self._downscale_nearest(current_array, rescale_yx_block_nearest_neighbor_gpu)
 
             if current_array is None:
-                # If rescaling failed, stop here
                 break
 
             arrays.append(current_array)
@@ -436,8 +404,7 @@ class Downscaler:
         return new_chunks
 
     def _process_block_on_gpu(self, block, sigma_list, downscale_factor, cuda_device_id, cp, ndi):
-        """Process a single block on GPU with error handling.
-        
+        """
         Args:
             block: Input block to process.
             sigma_list: Gaussian filter sigma values.
@@ -456,15 +423,15 @@ class Downscaler:
             gpu_block = cp.asarray(block)
             
             try:
-                # Apply Gaussian filter
+                # Gaussian filter
                 filtered_gpu = ndi.gaussian_filter(
                     gpu_block, sigma=sigma_list, mode="nearest"
                 )
                 
                 # Calculate zoom factors for rescaling
-                zoom_factors = self._calculate_zoom_factors(block.ndim, downscale_factor)
+                zoom_factors = self._calculate_zoom_factors_for_rescaling(block.ndim, downscale_factor)
                 
-                # Apply rescaling with bilinear interpolation
+                # rescaling with bilinear interpolation
                 rescaled_gpu = ndi.zoom(
                     filtered_gpu, zoom=zoom_factors, order=1, prefilter=False
                 )
@@ -472,7 +439,7 @@ class Downscaler:
                 # Convert back to NumPy with original dtype
                 result = cp.asnumpy(rescaled_gpu).astype(block.dtype)
                 
-                # Explicit cleanup
+                # cleanup
                 del gpu_block, filtered_gpu, rescaled_gpu
                 
                 return result
@@ -483,25 +450,23 @@ class Downscaler:
                     f"GPU operation failed on device {cuda_device_id}: {e}"
                 ) from e
 
-    def _calculate_zoom_factors(self, ndim: int, downscale_factor: float) -> List[float]:
-        """Calculate zoom factors for rescaling operation.
-        
+    def _calculate_zoom_factors_for_rescaling(self, ndim: int, downscale_factor: float) -> List[float]:
+        """
         Args:
             ndim: Number of dimensions in the block.
-            downscale_factor: Factor by which to downscale.
+            downscale_factor: Factor by which to downscale the xy dimensions.
             
         Returns:
             List of zoom factors for each dimension.
         """
         zoom_factors = [1.0] * ndim
         zoom_factor = 1.0 / downscale_factor
-        zoom_factors[-2] = zoom_factor  # Y dimension
-        zoom_factors[-1] = zoom_factor  # X dimension
+        zoom_factors[-2] = zoom_factor  
+        zoom_factors[-1] = zoom_factor  
         return zoom_factors
 
     def _cleanup_gpu_memory(self, cp):
-        """Clean up GPU memory after an error.
-        
+        """       
         Args:
             cp: CuPy module.
         """
@@ -517,33 +482,28 @@ class Downscaler:
     def _downscale_nearest(
         self, current_array: da.Array, rescale_func
     ) -> Optional[da.Array]:
-        """Apply nearest-neighbor downscaling.
-
+        """
         Args:
             current_array: Current array to downscale.
             rescale_func: Function to use for rescaling blocks.
-
         Returns:
             Downscaled array or None if operation failed.
         """
         if self._should_use_gpu():
-            return self._downscale_nearest_gpu(current_array, rescale_func)
+            return self._downscale_nearest_neighbor_gpu(current_array, rescale_func)
         else:
-            return self._downscale_nearest_cpu(current_array, rescale_func)
+            return self._downscale_nearest_neighbor_cpu(current_array, rescale_func)
 
-    def _downscale_nearest_cpu(
+    def _downscale_nearest_neighbor_cpu(
         self, current_array: da.Array, rescale_func
     ) -> Optional[da.Array]:
-        """Apply nearest-neighbor downscaling on CPU.
-
+        """
         Args:
             current_array: Current array to downscale.
             rescale_func: Function to use for rescaling blocks.
-
         Returns:
             Downscaled array or None if operation failed.
         """
-        # Calculate new chunk sizes (also downscaled for Y and X dimensions)
         new_chunks = list(current_array.chunks)
         new_chunks[-2] = tuple(
             max(1, int(chunk_size / self.downscale_factor))
@@ -568,15 +528,13 @@ class Downscaler:
         except (ValueError, RuntimeError):
             return None
 
-    def _downscale_nearest_gpu(
+    def _downscale_nearest_neighbor_gpu(
         self, current_array: da.Array, rescale_func
     ) -> Optional[da.Array]:
-        """Apply nearest-neighbor downscaling on GPU.
-
+        """
         Args:
             current_array: Current array to downscale.
             rescale_func: Function to use for rescaling blocks.
-
         Returns:
             Downscaled array or None if operation failed.
         """
@@ -586,25 +544,23 @@ class Downscaler:
         except ImportError:
             return None
         
-        def rescale_yx_block(block, cuda_device_id):
-            """Rescale block using nearest-neighbor interpolation on GPU."""
+        def rescale_yx_block_nearest_neighbor_gpu(block, cuda_device_id):
             if block.size == 0:
                 return block
                 
             with cp.cuda.Device(cuda_device_id):
                 try:
                     array_cp = cp.asarray(block)
-                    # Calculate zoom factors for nearest-neighbor downscaling
+                    # Calculate zoom factors 
                     zoom_factors = [1.0] * array_cp.ndim
                     zoom_factor = 1.0 / self.downscale_factor
-                    zoom_factors[-2] = zoom_factor  # Y dimension
-                    zoom_factors[-1] = zoom_factor  # X dimension
+                    zoom_factors[-2] = zoom_factor  
+                    zoom_factors[-1] = zoom_factor 
                     
-                    # Use cupyx.scipy.ndimage.zoom for nearest-neighbor interpolation
                     rescaled_gpu = ndi.zoom(array_cp, zoom_factors, order=0, prefilter=False)
                     result = cp.asnumpy(rescaled_gpu).astype(block.dtype)
                     
-                    # Explicit cleanup
+                    # Cleanup
                     del array_cp, rescaled_gpu
                     
                     return result
@@ -620,7 +576,7 @@ class Downscaler:
         new_chunks = self._calculate_output_chunks(current_array.chunks)
 
         return da.map_blocks(
-            rescale_yx_block,
+            rescale_yx_block_nearest_neighbor_gpu,
             current_array,
             cuda_device_id=self.cuda_device_id,
             dtype=current_array.dtype,
@@ -631,47 +587,40 @@ class Downscaler:
         )
 
 
-    def create_coordinate_transformations_for_levels(
+    def create_coordinate_transformations_for_multiscales(
         self,
         coordinate_transformations: Optional[List[ScaleTransformation]],
         image_shape: tuple,
-        num_actual_levels: int,
+        num_levels: int,
     ) -> List[List[ScaleTransformation]]:
-        """Create coordinate transformations for each downscale level.
-
-        Takes the scale transformations provided for the original image and
-        adjusts them appropriately for each downscale level. The spatial dimensions
-        (Y and X, which are the last two dimensions) are multiplied by the
-        downscale factor for each level.
+        """
+        Scale transformations provided for the original image are adjusted for each downscale level
+        by multiplying the spatial dimensions by the downscale factor for each level.
 
         Args:
             coordinate_transformations: Original coordinate transformations.
             image_shape: Shape of the original image.
-            num_actual_levels: Number of actual resolution levels created.
+            num_levels: Number of resolution levels created.
 
         Returns:
-            List of scale transformation lists, one for each resolution level.
+            List of scale transformation lists, one for each downscaled level.
             The first list corresponds to the original image, subsequent lists
             correspond to progressively downscaled levels.
         """
         if coordinate_transformations is None:
             return []
 
-        # Create coordinate transformations for each level
         all_transformations = []
 
-        for level in range(num_actual_levels):
+        for level in range(num_levels):
             level_transformations = []
 
             for transform in coordinate_transformations:
-                # For scale transformations, adjust spatial dimensions (Y, X)
                 new_scale = transform.scale.copy()
 
-                # The last two dimensions are always Y, X in our schema
-                # Multiply by downscale_factor^level for these dimensions
                 scale_factor = self.downscale_factor**level
-                new_scale[-2] *= scale_factor  # Y dimension
-                new_scale[-1] *= scale_factor  # X dimension
+                new_scale[-2] *= scale_factor 
+                new_scale[-1] *= scale_factor 
 
                 level_transformations.append(ScaleTransformation(scale=new_scale))
 

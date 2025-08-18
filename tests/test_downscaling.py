@@ -1,6 +1,6 @@
-"""Comprehensive tests for downscaling functionality in OME-Zarr writer.
-
-This module tests both the Downscaler class (in isolation) and its integration
+"""
+This module tests for downscaling functionality in OME-Zarr writer.
+It tests both the Downscaler class in isolation and its integration
 with the OmeZarrImage class to ensure proper downscaling behavior.
 """
 
@@ -16,21 +16,18 @@ from ome_zarr_writer.schema_models import ScaleTransformation
 
 @pytest.fixture
 def sample_2d_image():
-    """Create a sample 2D image for testing."""
     return np.random.randint(0, 255, size=(100, 100), dtype=np.uint8)
 
 
 @pytest.fixture
 def temp_dir(tmp_path):
-    """Create a temporary directory for testing."""
     return tmp_path
 
 
 class TestDownscaler:
-    """Test the Downscaler class in isolation."""
+    """TestDownscaler class for testing the Downscaler class."""
 
-    def test_init_valid_parameters(self):
-        """Test Downscaler initialization with valid parameters."""
+    def test_init_with_valid_parameters(self):
         downscaler = Downscaler(
             downscale_factor=2.0,
             downscale_method="gaussian",
@@ -41,50 +38,44 @@ class TestDownscaler:
         assert downscaler.downscale_method == "gaussian"
         assert downscaler.downscale_levels == 3
 
-    def test_init_invalid_downscale_factor(self):
-        """Test that invalid downscale factor raises ValueError."""
+    def test_init_with_invalid_downscale_factor(self):
         with pytest.raises(ValueError, match="downscale_factor must be > 1.0"):
             Downscaler(downscale_factor=0.5)
 
-    def test_validate_downscale_levels_valid(self):
-        """Test validate_downscale_levels with valid input."""
+    def test_validate_downscale_levels__with_valid_parameters(self):
         downscaler = Downscaler(downscale_levels=3)
         image_shape = (100, 100)
         
         validated_levels = downscaler.validate_downscale_levels(image_shape)
         assert validated_levels == 3
 
-    def test_validate_downscale_levels_too_many(self):
-        """Test validate_downscale_levels with too many levels."""
+    def test_validate_downscale_levels__with_too_many_levels_for_image(self):
         downscaler = Downscaler(downscale_levels=10)
-        image_shape = (16, 16)  # Small image that can't support 10 levels
+        image_shape = (16, 16)
         
         with pytest.warns(UserWarning):
             validated_levels = downscaler.validate_downscale_levels(image_shape)
             
         assert validated_levels < 10
 
-    def test_validate_downscale_levels_none(self):
-        """Test validate_downscale_levels with None levels."""
+    def test_validate_downscale_levels__wiht_no_levels(self):
         downscaler = Downscaler(downscale_levels=None)
         image_shape = (100, 100)
         
         validated_levels = downscaler.validate_downscale_levels(image_shape)
         assert validated_levels == 0
 
-    def test_create_downscaled_arrays_no_downscaling(self):
-        """Test create_downscaled_arrays with no downscaling."""
+    def test_create_downscaled_arrays_for_multiscale__without_downscaling(self):
         image = da.ones((50, 50), dtype=np.uint8)
         downscaler = Downscaler(downscale_levels=0)
         
-        arrays = downscaler.create_downscaled_arrays(image)
+        arrays = downscaler.create_downscaled_arrays_for_multiscale(image)
         
         assert len(arrays) == 1
         assert arrays[0].shape == (50, 50)
 
     @pytest.mark.parametrize("method", ["gaussian", "nearest"])
-    def test_create_downscaled_arrays_methods(self, method):
-        """Test create_downscaled_arrays with different methods."""
+    def test_create_downscaled_arrays_for_multiscale__with_different_methods(self, method):
         image = da.ones((100, 100), dtype=np.uint8)
         downscaler = Downscaler(
             downscale_factor=2.0,
@@ -92,15 +83,14 @@ class TestDownscaler:
             downscale_levels=2
         )
         
-        arrays = downscaler.create_downscaled_arrays(image)
+        arrays = downscaler.create_downscaled_arrays_for_multiscale(image)
         
         assert len(arrays) == 3  # Original + 2 downscaled
         assert arrays[0].shape == (100, 100)
         assert arrays[1].shape == (50, 50)
         assert arrays[2].shape == (25, 25)
 
-    def test_create_downscaled_arrays_invalid_method(self):
-        """Test create_downscaled_arrays with invalid method defaults to gaussian."""
+    def test_create_downscaled_arrays_for_multiscale__with_invalid_method_defaults_gaus(self):
         image = da.ones((100, 100), dtype=np.uint8)
         downscaler = Downscaler(
             downscale_factor=2.0,
@@ -108,22 +98,20 @@ class TestDownscaler:
             downscale_levels=1
         )
         
-        arrays = downscaler.create_downscaled_arrays(image)
+        arrays = downscaler.create_downscaled_arrays_for_multiscale(image)
         
         assert len(arrays) == 2  # Should still work
         assert arrays[0].shape == (100, 100)
         assert arrays[1].shape == (50, 50)
 
-    def test_create_coordinate_transformations_for_levels(self):
-        """Test coordinate transformation creation."""
+    def test_create_coordinate_transformations_for_multiscales(self):
         downscaler = Downscaler(downscale_factor=2.0)
         
-        # Create original transformations
         original_transforms = [ScaleTransformation(scale=[0.1, 0.1])]
         image_shape = (100, 100)
         num_levels = 3
         
-        level_transforms = downscaler.create_coordinate_transformations_for_levels(
+        level_transforms = downscaler.create_coordinate_transformations_for_multiscales(
             original_transforms, image_shape, num_levels
         )
         
@@ -134,19 +122,16 @@ class TestDownscaler:
         assert level_transforms[1][0].scale == [0.2, 0.2]  # Level 1 (2x)
         assert level_transforms[2][0].scale == [0.4, 0.4]  # Level 2 (4x)
 
-    def test_create_coordinate_transformations_none_input(self):
-        """Test coordinate transformation creation with None input."""
+    def test_create_coordinate_transformations__without_input(self):
         downscaler = Downscaler()
         
-        level_transforms = downscaler.create_coordinate_transformations_for_levels(
+        level_transforms = downscaler.create_coordinate_transformations_for_multiscales(
             None, (100, 100), 3
         )
         
         assert level_transforms == []
 
-    def test_multidimensional_image_downscaling(self):
-        """Test downscaling with multidimensional images (preserves non-spatial dims)."""
-        # Create a 4D image (T, C, Y, X)
+    def test_create_downscaled_arrays_for_multiscale_for_multidimensional_image(self):
         image = da.ones((5, 3, 100, 100), dtype=np.uint8)
         downscaler = Downscaler(
             downscale_factor=2.0,
@@ -154,10 +139,9 @@ class TestDownscaler:
             downscale_levels=2
         )
         
-        arrays = downscaler.create_downscaled_arrays(image)
+        arrays = downscaler.create_downscaled_arrays_for_multiscale(image)
         
         assert len(arrays) == 3
-        # Time and channel dimensions should be preserved
         assert arrays[0].shape == (5, 3, 100, 100)
         assert arrays[1].shape == (5, 3, 50, 50)
         assert arrays[2].shape == (5, 3, 25, 25)
@@ -423,7 +407,7 @@ class TestOmeZarrImageDownscaling:
         assert writer.downscale_levels == 2
 
         # Test coordinate transformations for levels
-        level_transformations = writer._create_coordinate_transformations_for_levels()
+        level_transformations = writer._create_coordinate_transformations_for_multiscales()
         assert len(level_transformations) >= 1
 
     def test_no_downscaling_creates_single_level(self, temp_dir, sample_2d_image):

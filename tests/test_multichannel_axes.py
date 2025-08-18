@@ -16,7 +16,6 @@ class TestMultichannelAxes:
     """Test the multichannel axis creation convenience functions."""
 
     def test_create_cyx_axes(self):
-        """Test CYX (Channel, Y, X) axis creation."""
         axes = create_cyx_axes(0.1, 0.2, unit="micrometer")
 
         assert len(axes) == 3
@@ -37,7 +36,6 @@ class TestMultichannelAxes:
         assert axes[2].unit == "micrometer"
 
     def test_create_czyx_axes(self):
-        """Test CZYX (Channel, Z, Y, X) axis creation."""
         axes = create_czyx_axes(0.1, 0.1, 0.3, unit="nanometer")
 
         assert len(axes) == 4
@@ -63,7 +61,6 @@ class TestMultichannelAxes:
         assert axes[3].unit == "nanometer"
 
     def test_create_tyx_axes(self):
-        """Test TYX (Time, Y, X) axis creation."""
         axes = create_tyx_axes(0.5, 0.5, unit="millimeter")
 
         assert len(axes) == 3
@@ -84,7 +81,6 @@ class TestMultichannelAxes:
         assert axes[2].unit == "millimeter"
 
     def test_create_tcyx_axes(self):
-        """Test TCYX (Time, Channel, Y, X) axis creation."""
         axes = create_tcyx_axes(0.25, 0.25, unit="meter")
 
         assert len(axes) == 4

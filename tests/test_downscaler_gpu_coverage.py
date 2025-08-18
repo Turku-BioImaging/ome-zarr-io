@@ -24,10 +24,10 @@ class TestDownscalerDeviceValidation:
         assert downscaler.device == "cpu"
         assert downscaler.cuda_device_id is None
 
-    def test_should_use_gpu_cpu_device(self):
-        """Test _should_use_gpu method with CPU device."""
+    def test_use_gpu_cpu_device(self):
+        """Test _use_gpu method with CPU device."""
         downscaler = Downscaler(device="cpu")
-        assert not downscaler._should_use_gpu()
+        assert not downscaler._use_gpu()
 
 
 @pytest.mark.gpu
@@ -163,14 +163,14 @@ class TestDownscalerEdgeCases:
         result = downscaler.validate_downscale_levels((100, 100))
         assert result == 0
 
-    def test_create_downscaled_arrays__if_img_dimensions_small(self):
+    def test_create_downscaled_arrays_for_multiscale__if_img_dimensions_small(self):
         image = da.ones((4, 4), dtype=np.uint8)
         downscaler = Downscaler(
             downscale_factor=5.0,  
             downscale_levels=3
         )
         
-        arrays = downscaler.create_downscaled_arrays(image)
+        arrays = downscaler.create_downscaled_arrays_for_multiscale(image)
         
         assert len(arrays) == 1  
 
@@ -247,7 +247,7 @@ class TestDownscalerEdgeCases:
             downscale_levels=1
         )
         
-        arrays = downscaler.create_downscaled_arrays(create_2d_sample_image)
+        arrays = downscaler.create_downscaled_arrays_for_multiscale(create_2d_sample_image)
         assert len(arrays) == 2
         assert arrays[0].shape == (100, 100)
         assert arrays[1].shape == (50, 50)

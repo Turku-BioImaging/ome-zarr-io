@@ -115,7 +115,7 @@ class OmeZarrImage:
         from typing import cast
         return cast(Literal["cpu", "cuda"], self.downscaler.device)
 
-    def _create_downscaled_arrays(self) -> List[da.Array]:
+    def _create_downscaled_arrays_for_multiscale(self) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.
 
         Uses the Downscaler instance to create a list of dask arrays where each 
@@ -126,9 +126,9 @@ class OmeZarrImage:
             List of downscaled dask arrays. The first array is the original image,
             followed by progressively downscaled versions.
         """
-        return self.downscaler.create_downscaled_arrays(self.image)
+        return self.downscaler.create_downscaled_arrays_for_multiscale(self.image)
 
-    def _create_coordinate_transformations_for_levels(
+    def _create_coordinate_transformations_for_multiscales(
         self,
     ) -> List[List[ScaleTransformation]]:
         """Create coordinate transformations for each downscale level.
@@ -140,10 +140,10 @@ class OmeZarrImage:
             List of scale transformation lists, one for each resolution level.
         """
         # First, get the actual arrays that will be created to determine num_levels
-        arrays = self._create_downscaled_arrays()
+        arrays = self._create_downscaled_arrays_for_multiscale()
         num_levels = len(arrays)
         
-        return self.downscaler.create_coordinate_transformations_for_levels(
+        return self.downscaler.create_coordinate_transformations_for_multiscales(
             self.coordinate_transformations,
             self.image.shape,
             num_levels
@@ -387,10 +387,10 @@ class OmeZarrImage:
         )
 
         # Generate downscaled arrays
-        arrays = self._create_downscaled_arrays()
+        arrays = self._create_downscaled_arrays_for_multiscale()
 
         # Generate coordinate transformations for each level
-        level_transformations = self._create_coordinate_transformations_for_levels()
+        level_transformations = self._create_coordinate_transformations_for_multiscales()
 
         # Create datasets for each resolution level
         datasets = []

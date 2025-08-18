@@ -42,27 +42,27 @@ class TestDownscaler:
         with pytest.raises(ValueError, match="downscale_factor must be > 1.0"):
             Downscaler(downscale_factor=0.5)
 
-    def test_validate_downscale_levels__with_valid_parameters(self):
+    def test_validate_or_adjust_downscale_levels__with_valid_parameters(self):
         downscaler = Downscaler(downscale_levels=3)
         image_shape = (100, 100)
         
-        validated_levels = downscaler.validate_downscale_levels(image_shape)
+        validated_levels = downscaler.validate_or_adjust_downscale_levels(image_shape)
         assert validated_levels == 3
 
-    def test_validate_downscale_levels__with_too_many_levels_for_image(self):
+    def test_validate_or_adjust_downscale_levels__with_too_many_levels_for_image(self):
         downscaler = Downscaler(downscale_levels=10)
         image_shape = (16, 16)
         
         with pytest.warns(UserWarning):
-            validated_levels = downscaler.validate_downscale_levels(image_shape)
+            validated_levels = downscaler.validate_or_adjust_downscale_levels(image_shape)
             
         assert validated_levels < 10
 
-    def test_validate_downscale_levels__wiht_no_levels(self):
+    def test_validate_or_adjust_downscale_levels__wiht_no_levels(self):
         downscaler = Downscaler(downscale_levels=None)
         image_shape = (100, 100)
         
-        validated_levels = downscaler.validate_downscale_levels(image_shape)
+        validated_levels = downscaler.validate_or_adjust_downscale_levels(image_shape)
         assert validated_levels == 0
 
     def test_create_downscaled_arrays_for_multiscale__without_downscaling(self):
@@ -176,7 +176,7 @@ class TestOmeZarrImageDownscaling:
         )
 
         # Get downscaled arrays from OmeZarrImage
-        ome_arrays = writer._create_downscaled_arrays()
+        ome_arrays = writer._create_downscaled_arrays_for_multiscale()
 
         # Test specific expected shapes for our test case with factor 1.5
         expected_shapes = [
@@ -259,8 +259,8 @@ class TestOmeZarrImageDownscaling:
         )
 
         # Generate downscaled arrays
-        arrays_gaussian = writer_gaussian._create_downscaled_arrays()
-        arrays_nearest = writer_nearest._create_downscaled_arrays()
+        arrays_gaussian = writer_gaussian._create_downscaled_arrays_for_multiscale()
+        arrays_nearest = writer_nearest._create_downscaled_arrays_for_multiscale()
 
         # Both should have the same number of levels
         assert len(arrays_gaussian) == len(arrays_nearest) == 2
@@ -301,7 +301,7 @@ class TestOmeZarrImageDownscaling:
         assert writer.downscale_method == method
 
         # Should be able to create downscaled arrays
-        arrays = writer._create_downscaled_arrays()
+        arrays = writer._create_downscaled_arrays_for_multiscale()
         assert len(arrays) >= 2  # Original + at least 1 downscaled
 
         # Should be able to write successfully
@@ -351,7 +351,7 @@ class TestOmeZarrImageDownscaling:
         assert writer.downscale_levels == 2
 
         # Should be able to create arrays and write (defaults to gaussian behavior)
-        arrays = writer._create_downscaled_arrays()
+        arrays = writer._create_downscaled_arrays_for_multiscale()
         assert len(arrays) == 3  # Original + 2 downscaled levels
 
         writer.write()
@@ -374,7 +374,7 @@ class TestOmeZarrImageDownscaling:
             downscale_levels=1,
         )
 
-        arrays = writer._create_downscaled_arrays()
+        arrays = writer._create_downscaled_arrays_for_multiscale()
 
         # Should have 2 levels
         assert len(arrays) == 2
@@ -424,7 +424,7 @@ class TestOmeZarrImageDownscaling:
             downscale_levels=None,
         )
 
-        arrays = writer._create_downscaled_arrays()
+        arrays = writer._create_downscaled_arrays_for_multiscale()
 
         # Should have only 1 level: original
         assert len(arrays) == 1
@@ -499,7 +499,7 @@ class TestOmeZarrImageDownscaling:
             downscale_levels=2,
         )
 
-        arrays = writer._create_downscaled_arrays()
+        arrays = writer._create_downscaled_arrays_for_multiscale()
 
         # Should have 3 levels: original + 2 downscaled
         assert len(arrays) == 3

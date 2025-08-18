@@ -13,7 +13,8 @@ class TestDictScaleTransformations:
        This is the documentation for TestDictScaleTransformations class, used for testing dictionary-based scale transformations in the new write() method API.
     """
 
-    def test_data(self):
+    def setup_method(self):
+        """Set up test data."""
         self.test_image = np.random.randint(0, 255, size=(2, 5, 64, 64), dtype=np.uint8)
         self.dims = ["c", "z", "y", "x"]
         self.axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}

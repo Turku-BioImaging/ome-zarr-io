@@ -78,7 +78,7 @@ class Downscaler:
         return self.device == "cuda"
 
     def _device_info(self) -> dict:
-        if not self._should_use_gpu():
+        if not self._use_gpu():
             return {
                 "device_type": "cpu",
                 "device_name": "CPU",
@@ -274,7 +274,7 @@ class Downscaler:
         Returns:
             Downscaled array or None if operation failed.
         """
-        if self._should_use_gpu():
+        if self._use_gpu():
             return self._downscale_gaussian_gpu(current_array)
         else:
             return self._downscale_gaussian_cpu(current_array, rescale_func)
@@ -489,7 +489,7 @@ class Downscaler:
         Returns:
             Downscaled array or None if operation failed.
         """
-        if self._should_use_gpu():
+        if self._use_gpu():
             return self._downscale_nearest_neighbor_gpu(current_array, rescale_func)
         else:
             return self._downscale_nearest_neighbor_cpu(current_array, rescale_func)

@@ -95,23 +95,19 @@ class OmeZarrImage:
 
     @property
     def downscale_levels(self) -> Optional[int]:
-        """Get the number of downscale levels from the downscaler."""
         return self.downscaler.downscale_levels
 
     @property
     def downscale_factor(self) -> float:
-        """Get the downscale factor from the downscaler."""
         return self.downscaler.downscale_factor
 
     @property
     def downscale_method(self) -> Literal["gaussian", "nearest"]:
-        """Get the downscale method from the downscaler."""
         from typing import cast
         return cast(Literal["gaussian", "nearest"], self.downscaler.downscale_method)
 
     @property
     def device(self) -> Literal["cpu", "cuda"]:
-        """Get the device from the downscaler."""
         from typing import cast
         return cast(Literal["cpu", "cuda"], self.downscaler.device)
 
@@ -230,12 +226,10 @@ class OmeZarrImage:
         Raises:
             ValueError: If required dimensions are missing or invalid units are provided
         """
-        # Create axes based on dimension names
         axes = []
         for dim in dims:
             dim_lower = dim.lower()
 
-            # Get unit for this dimension (case insensitive lookup)
             unit = None
             for key, value in axis_dict.items():
                 if key.lower() == dim_lower:
@@ -248,9 +242,10 @@ class OmeZarrImage:
                         f"Time dimension '{dim}' requires a unit specification"
                     )
                 axes.append(Axis(name=dim, type="time", unit=unit))
+                
             elif dim_lower == "c":
-                # Channel dimension - no unit needed, can be omitted from axis_units
                 axes.append(Axis(name=dim, type="channel", unit=None))
+                
             elif dim_lower in ["x", "y", "z"]:
                 if unit is None:
                     raise ValueError(
@@ -314,14 +309,11 @@ class OmeZarrImage:
         Raises:
             ValueError: If the dictionary format is invalid
         """
-        # Initialize scale array with 1.0 for all dimensions
         scale = [1.0] * len(dims)
 
-        # Process each dimension in the dictionary
         for dim_name, value in transform_dict.items():
             dim_name_lower = dim_name.lower()
 
-            # Find the dimension index
             try:
                 dim_index = [d.lower() for d in dims].index(dim_name_lower)
             except ValueError:
@@ -330,16 +322,16 @@ class OmeZarrImage:
                     f"Valid dimensions are: {', '.join(dims)}"
                 )
 
-            # Extract scale value - only accept numbers
+            # Extract scale value (positive int or float)
             if isinstance(value, (int, float)):
                 scale_value = float(value)
+            
             else:
                 raise ValueError(
                     f"Invalid value for dimension '{dim_name}': {value}. "
                     f"Expected a number (int or float)"
                 )
 
-            # Validate scale value
             if scale_value <= 0:
                 raise ValueError(
                     f"Scale value for dimension '{dim_name}' must be positive, got {scale_value}"
@@ -374,63 +366,46 @@ class OmeZarrImage:
         """
         import shutil
 
-        # Remove existing file if overwrite is True
         if self.overwrite and self.path.exists():
             if self.path.is_dir():
                 shutil.rmtree(self.path)
             else:
                 self.path.unlink()
-
-        # Create the root zarr group
         root_group = zarr.create_group(
             str(self.path), overwrite=self.overwrite, zarr_format=3
         )
-
-        # Generate downscaled arrays
         arrays = self._create_downscaled_arrays_for_multiscale()
-
-        # Generate coordinate transformations for each level
         level_transformations = self._create_coordinate_transformations_for_multiscales()
 
-        # Create datasets for each resolution level
         datasets = []
         for level, array in enumerate(arrays):
-            # Convert dask array to numpy for zarr storage
             array_data: np.ndarray = np.asarray(
                 array.compute() if hasattr(array, "compute") else array
             )
 
-            # Prepare zarr array creation arguments
             zarr_kwargs = {
                 "name": str(level),
                 "shape": array_data.shape,
                 "dtype": array_data.dtype,
             }
 
-            # Add chunks parameter if specified
             if chunks is not None:
                 zarr_kwargs["chunks"] = chunks
 
-            # Add shards parameter if specified (zarr v3 feature)
             if shards is not None:
                 zarr_kwargs["shards"] = shards
 
-            # Add compressors parameter if specified
             if compressors is not None:
                 zarr_kwargs["compressors"] = compressors
 
-            # Create zarr array for this level and store the data
             zarr_array = root_group.create_array(**zarr_kwargs)
             zarr_array[:] = array_data
 
-            # Get coordinate transformations for this level
             if level_transformations and level < len(level_transformations):
                 transformations = level_transformations[level]
             else:
-                # Create default scale transformation if none provided
                 transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
 
-            # Create dataset metadata
             from typing import cast
             from .schema_models import TranslationTransformation
 
@@ -443,22 +418,18 @@ class OmeZarrImage:
             )
             datasets.append(dataset)
 
-        # Create multiscale metadata
         multiscale = Multiscale(
             datasets=datasets,
             axes=self.axes,
-            name=self.path.stem,  # Use filename as name
+            name=self.path.stem, 
         )
 
-        # Create OME metadata
         ome_metadata = OMEMetadata(
             multiscales=[multiscale], version="0.5", omero=self.omero_metadata
         )
 
-        # Create final metadata container
         metadata = OMEZarrImageMetadata(ome=ome_metadata)
 
-        # Write metadata to zarr attributes
         root_group.attrs.update(metadata.to_dict())
 
         # zarr.consolidate_metadata(str(self.path))

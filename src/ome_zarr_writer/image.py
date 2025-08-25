@@ -51,10 +51,8 @@ class OmeZarrImage:
                 dimension. Dictionary format:
                 - Per-dimension units: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
             downscale_method: Method to use for downscaling. Either Gaussian filter or nearest-neighbor interpolation; default "gaussian". Use Gaussian filtering for intensity images to avoid aliasing artifacts in downscaled images. Label images should be downscaled using nearest-neighbor interpolation.
-            scale_transformations: Optional dictionary specifying scale values for dimensions.
-                Examples:
-                - {"z": 0.25, "y": 0.1, "x": 0.1} for spatial dimensions
-                - {"t": 0.5, "z": 0.25, "y": 0.1, "x": 0.1} including time axis
+            scale_transformations: Optional dictionary specifying scale values (dimension sizes) for dimensions.
+                Example: {"t": 0.5, "z": 2.1, "y": 0.75, "x": 0.75}
                 Units are determined by the axis_units parameter. Scale values will be
                 automatically adjusted for each downscale level.
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
@@ -201,13 +199,12 @@ class OmeZarrImage:
         """Create Axis objects from a dictionary specification.
 
         Args:
-            axis_dict: Dictionary containing unit specifications. Per-dimension format: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
+            axis_dict: Dictionary containing unit specifications of dimensions; dimension names as keys and dimension units as values E.g.{"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
             dims: List of dimension names
 
         Returns:
             List of Axis objects
         """
-        # Per-dimension format
         return self._create_axes_from_per_dimension_dict(axis_dict, dims)
 
     def _create_axes_from_per_dimension_dict(
@@ -216,10 +213,9 @@ class OmeZarrImage:
         """Create Axis objects from per-dimension unit specification.
 
         Args:
-            axis_dict: Dictionary with dimension names as keys and units as values
-                Example: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
-            dims: List of dimension names
-
+            axis_dict: Dictionary containing unit specifications of dimensions
+            dims: Dimension names; case-insensitive 
+            
         Returns:
             List of Axis objects
 
@@ -267,7 +263,7 @@ class OmeZarrImage:
         """Process scale transformations and convert dictionary format to ScaleTransformation objects.
 
         Args:
-            scale_transformations: Dictionary specifying pixel sizes for dimensions
+            scale_transformations: Dictionary specifying for each dimension the corresponding size, besides the channel dimension.
             dims: List of dimension names
 
         Returns:
@@ -296,12 +292,8 @@ class OmeZarrImage:
         """Create a ScaleTransformation object from a dictionary specification.
 
         Args:
-            transform_dict: Dictionary with dimension names as keys and scale values as values.
-                Values must be numbers (int or float).
-                Examples:
-                - {"z": 0.25, "y": 0.1, "x": 0.1}
-                - {"t": 0.5, "z": 0.25, "y": 0.1, "x": 0.1}
-            dims: List of dimension names
+            transform_dict: Dictionary with dimension names as keys and sizes of each dimension unit (e.g.pixel sizes for spatial) as scale transformations.
+            dims: Dimension names
 
         Returns:
             List containing a single ScaleTransformation object
@@ -322,7 +314,6 @@ class OmeZarrImage:
                     f"Valid dimensions are: {', '.join(dims)}"
                 )
 
-            # Extract scale value (positive int or float)
             if isinstance(value, (int, float)):
                 scale_value = float(value)
             

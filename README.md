@@ -14,8 +14,7 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Type-safe Python dataclasses implementing the OME-Zarr schema
 - JSON Schema validation for metadata compliance
 - Strict TCZYX dimension ordering
-- Space axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
-- Time axis unit validation
+- Space and time axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
 - Two downscaling methods: Gaussian filtering (default) and nearest-neighbor interpolation
 
 
@@ -39,105 +38,9 @@ git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
 pip install -r requirements.txt
 ```
 
-### GPU Support (Optional)
-
-For GPU-accelerated downscaling, install with CuPy:
-
-```bash
-# Install with GPU support
-pip install -e ".[gpu]"
-
-# Or install CuPy for your CUDA version separately
-pip install cupy-cuda11x
-pip install cupy-cuda12x
-```
-
-**Requirements:** NVIDIA CUDA-compatible hardware and drivers. If CuPy is not available, the library automatically falls back to CPU computation.
-
-**Performance:** GPU acceleration provides significant speedups for large images and complex downscaling operations:
-- **Large images (≥4096×4096)**: Up to 2.5× faster with multiple downscale levels
-- **Small images (<1024×1024)**: CPU may be faster due to GPU overhead
-- **Optimal for**: Multi-level downscaling, large multi-dimensional datasets
-
-**Device Selection Tips:**
-- Use `device='cuda'` for large images (≥2048×2048) with multiple downscale levels
-- Use `device='cpu'` for small images or simple operations
-- Both Gaussian and nearest-neighbor methods support GPU acceleration
-
-## Downscaling Methods
-
-### Gaussian Filtering (Default)
-- **Best for:** Intensity images (fluorescence, brightfield, etc.)
-- **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
-- **Use case:** Most microscopy images where preserving smooth intensity variations is important
-
-### Nearest-Neighbor Interpolation  
-- **Best for:** Label/segmentation images with discrete values
-- **Method:** Preserves exact pixel values during downscaling
-- **Use case:** Segmentation masks, label images where each value represents a distinct object/region
-
-```python
-# For intensity images (default)
-downscale_method='gaussian'
-
-# For label/segmentation images
-downscale_method='nearest'
-
-# For GPU-accelerated processing (requires CuPy)
-from ome_zarr_writer import OmeZarrImage
-
-# GPU acceleration works best with large images and multiple downscale levels
-large_image = np.random.randint(0, 255, size=(4096, 4096), dtype=np.uint16)
-
-ome_zarr_image = OmeZarrImage(
-    path='gpu_example.ome.zarr',
-    image=large_image,
-    dims=['y', 'x'],
-    downscale_method='gaussian',  # Both gaussian and nearest methods support GPU
-    downscale_levels=5,          # More levels = better GPU utilization
-    device='cuda',               # Enable GPU acceleration
-    overwrite=True
-)
-
-# For smaller images or simple operations, CPU may be faster
-small_image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint16)
-cpu_optimized = OmeZarrImage(
-    path='cpu_example.ome.zarr',
-    image=small_image,
-    dims=['y', 'x'],
-    device='cpu',  # Explicitly use CPU for small images
-    overwrite=True
-)
-```
-
-### GPU Device Selection
-
-The library automatically chooses the optimal device, but you can also specify manually:
-
-```python
-from ome_zarr_writer import OmeZarrImage
-from ome_zarr_writer.downscaler import Downscaler
-
-# Check available GPU devices
-devices = Downscaler.list_cuda_devices()
-for device in devices:
-    print(f"GPU {device['device_id']}: {device['device_name']} "
-          f"({device['total_memory_gb']} GB)")
-
-# Use specific GPU device
-ome_zarr_image = OmeZarrImage(
-    path='multi_gpu.ome.zarr',
-    image=image,
-    dims=dims,
-    device='cuda',
-    cuda_device_id=0,  # Use first GPU
-    overwrite=True
-)
-```
-
 ## Quick Start
 
-### Basic Image Writing
+### Basic Usage
 
 ```python
 import numpy as np
@@ -177,89 +80,11 @@ ome_zarr_image = OmeZarrImage(
 
 # Write the OME-Zarr file
 ome_zarr_image.write()
-
-print("✅ Successfully created example.ome.zarr")
-```
-
-### Time-lapse Image with Scale Transformations
-
-```python
-import numpy as np
-from ome_zarr_writer import OmeZarrImage
-
-# Create sample 4D time-lapse data (T, Z, Y, X)
-image = np.random.randint(0, 255, size=(10, 8, 256, 256), dtype=np.uint16)
-
-dims = ["t", "z", "y", "x"]
-
-# Define axis units for both temporal and spatial dimensions
-axis_units = {
-    "t": "second",       # Time dimension in seconds
-    "z": "micrometer",   # Z dimension in micrometers
-    "y": "micrometer",   # Y dimension in micrometers
-    "x": "micrometer"    # X dimension in micrometers
-}
-
-# Define scale transformations for all dimensions
-scale_transformations = {
-    "t": 0.5,    # 0.5 second frame interval
-    "z": 0.25,   # 0.25 μm z-step size  
-    "y": 0.065,  # 0.065 μm pixel size in Y
-    "x": 0.065   # 0.065 μm pixel size in X
-}
-
-ome_zarr_image = OmeZarrImage(
-    path='timelapse.ome.zarr',
-    image=image,
-    dims=dims,
-    axis_units=axis_units,
-    scale_transformations=scale_transformations,
-    downscale_method='gaussian',  # Use Gaussian filtering for time-lapse data
-    downscale_levels=2,
-    overwrite=True
-)
-
-ome_zarr_image.write()
-
-print("✅ Successfully created timelapse.ome.zarr with temporal metadata")
 ```
 
 ### Advanced Storage Configuration
 
 ```python
-import numpy as np
-from ome_zarr_writer import OmeZarrImage
-
-# Create sample large 3D dataset
-image = np.random.randint(0, 65535, size=(64, 1024, 1024), dtype=np.uint16)
-
-dims = ["z", "y", "x"]
-
-axis_units = {
-    "z": "micrometer",
-    "y": "micrometer",
-    "x": "micrometer"
-}
-
-scale_transformations = {
-    "z": 0.2,   # 0.2 μm z-step
-    "y": 0.1,   # 0.1 μm pixel size
-    "x": 0.1    # 0.1 μm pixel size
-}
-
-# Configure chunking, sharding, and compression
-ome_zarr_image = OmeZarrImage(
-    path='advanced.ome.zarr',
-    image=image,
-    dims=dims,
-    axis_units=axis_units,
-    scale_transformations=scale_transformations,
-    downscale_method='gaussian',  # Default Gaussian filtering for intensity data
-    downscale_levels=3,
-    downscale_factor=2,
-    overwrite=True
-)
-
 # Setup compression options
 compressors = zarr.codecs.BloscCodec(cname="zstd", clevel=5, shuffle=zarr.codecs.BloscShuffle.shuffle)
 
@@ -268,34 +93,73 @@ ome_zarr_image.write(
     shards=(32, 512, 512),     # Group chunks into shards for efficiency
     compressors=compressors
 )
-
-print("✅ Successfully created advanced.ome.zarr with optimized storage")
 ```
 
+## Downscaling Methods
 
-### Valid Dimension Combinations
+### Gaussian Filtering (Default)
+- **Best for:** Intensity images (fluorescence, brightfield, etc.)
+- **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
+- **Use case:** Most microscopy images where preserving smooth intensity variations is important
 
-All input images must follow the **TCZYX** order where T (time), C (channel), and Z are optional:
-
-| Dimensions | Order | Example Use Case | Input Shape Example |
-|------------|-------|------------------|-------------------|
-| **YX** | Y, X | 2D grayscale image | `(512, 512)` |
-| **ZYX** | Z, Y, X | 3D confocal stack | `(20, 256, 256)` |
-| **CYX** | C, Y, X | RGB/multichannel 2D | `(3, 512, 512)` |
-| **CZYX** | C, Z, Y, X | Multiscale 3D stack | `(2, 15, 256, 256)` |
-| **TYX** | T, Y, X | Time-lapse 2D | `(100, 256, 256)` |
-| **TZYX** | T, Z, Y, X | 4D live imaging | `(50, 10, 128, 128)` |
-| **TCYX** | T, C, Y, X | Time-lapse multichannel | `(50, 2, 128, 128)` |
-| **TCZYX** | T, C, Z, Y, X | 5D live cell imaging | `(20, 3, 8, 64, 64)` |
-
-### Invalid Orderings (Rejected)
+### Nearest-Neighbor Interpolation  
+- **Best for:** Label/segmentation images with discrete values
+- **Method:** Preserves exact pixel values during downscaling
+- **Use case:** Segmentation masks, label images where each value represents a distinct object/region
 
 ```python
-# ❌ These will raise ValueError:
-dims = ["x", "y"]        # X, Y - wrong order, should be Y, X
-dims = ["z", "c", "t"]   # Z, C, T - wrong order, should be T, C, Z
-dims = ["c", "z", "d"]   # Invalid 'D' dimension - not supported
+# For intensity images (default)
+downscale_method='gaussian'
+
+# For label/segmentation images
+downscale_method='nearest'
 ```
+
+### GPU Support (Optional)
+
+For GPU-accelerated downscaling, install with CuPy:
+
+```bash
+# Install with GPU support
+pip install -e ".[gpu]"
+
+# Or install CuPy for your CUDA version separately
+pip install cupy-cuda11x
+pip install cupy-cuda12x
+```
+
+**Requirements:** NVIDIA CUDA-compatible hardware and drivers. If CuPy is not available, the library automatically falls back to CPU computation.
+
+**Performance:** GPU acceleration provides significant speedups for large images and complex downscaling operations:
+- **Large images (≥4096×4096)**: Up to 2.5× faster with multiple downscale levels
+- **Small images (<1024×1024)**: CPU may be faster due to GPU overhead
+- **Optimal for**: Multi-level downscaling, large multi-dimensional datasets
+
+#### GPU Device Selection
+
+The library automatically chooses the optimal device, but you can also specify manually:
+
+```python
+from ome_zarr_writer import OmeZarrImage
+from ome_zarr_writer.downscaler import Downscaler
+
+# Check available GPU devices
+devices = Downscaler.list_cuda_devices()
+for device in devices:
+    print(f"GPU {device['device_id']}: {device['device_name']} "
+          f"({device['total_memory_gb']} GB)")
+
+# Use specific GPU device
+ome_zarr_image = OmeZarrImage(
+    path='multi_gpu.ome.zarr',
+    image=image,
+    dims=dims,
+    device='cuda',
+    cuda_device_id=0,  # Use first GPU
+    overwrite=True
+)
+```
+
 
 ## Examples
 
@@ -306,26 +170,11 @@ The `examples/` directory contains **4 comprehensive examples** designed for pro
   - Time-lapse data handling
   - Basic compression and chunking
 
-- **`examples/advanced_features.py`** - Optimization and performance features
-  - Compression algorithm comparison
-  - Custom chunking strategies
-  - Multiscale pyramid optimization
-  - Performance considerations
-
-- **`examples/dimension_examples.py`** - Complete axis and dimension guide
-  - All supported dimension orders (2D to 5D)
-  - Spatial and temporal units
-  - Scale transformations
-  - Coordinate systems
-
 - **`examples/metadata_examples.py`** - Advanced metadata capabilities
   - Metadata configuration
   - Multichannel setups
   - Validation examples
 
-**Quick start:** Run `python examples/getting_started.py` to see essential usage patterns.
-
-For the complete migration guide and detailed organization, see [`examples/README.md`](examples/README.md).
 
 ## Development
 
@@ -380,4 +229,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-This package builds upon the excellent work of the [zarr-python](https://github.com/zarr-developers/zarr-python) community.
+This package was largely inspired by [ngff-zarr](https://github.com/thewtex/ngff-zarr) and builds upon excellent work of the [zarr-python](https://github.com/zarr-developers/zarr-python) community.

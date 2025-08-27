@@ -5,7 +5,14 @@ Write valid OME-Zarr 0.5 multiscale images
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml)
 [![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 
+<p float='left'>
+    <a href='https://bioimaging.fi' target='_blank'>
+        <img src='https://github.com/user-attachments/assets/429d4dac-7af6-40f3-abe6-b4ba999185b0' style="height:75px;width:auto;"/>
+    </a>
+</p>
+
 A Python package for writing valid OME-Zarr 0.5 multiscale images. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format.
+  
 
 ## Features
 

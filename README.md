@@ -68,8 +68,8 @@ ome_zarr_image = OmeZarrImage(
 ome_zarr_image.write()
 ```
 
-### Advanced Storage Configuration
-
+### Customize Storage Configuration
+Zarr v3 supports _chunks_, _shards_, and new compression via _codecs_.
 ```python
 # Setup compression options
 compressors = zarr.codecs.BloscCodec(cname="zstd", clevel=5, shuffle=zarr.codecs.BloscShuffle.shuffle)

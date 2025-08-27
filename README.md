@@ -17,27 +17,6 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Space and time axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
 - Two downscaling methods: Gaussian filtering (default) and nearest-neighbor interpolation
 
-
-## Installation
-
-### From source
-
-```bash
-git clone https://github.com/Turku-BioImaging/ome-zarr-writer.git
-cd ome-zarr-writer
-pip install -e .
-```
-
-### From pip requirements.txt
-
-```bash
-# Add to your requirements.txt file
-git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
-
-# Then install with pip
-pip install -r requirements.txt
-```
-
 ## Quick Start
 
 ### Basic Usage
@@ -95,7 +74,31 @@ ome_zarr_image.write(
 )
 ```
 
+## Installation
+
+### From source
+
+```bash
+git clone https://github.com/Turku-BioImaging/ome-zarr-writer.git
+cd ome-zarr-writer
+pip install -e .
+```
+
+### From pip requirements.txt
+
+```bash
+# Add to your requirements.txt file
+git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
+
+# Then install with pip
+pip install -r requirements.txt
+```
+
+
 ## Downscaling Methods
+The OME-Zarr multiscales specification requires generating downscaled (lower resolution) images from the original images. This allows OME-Zarr compatible software to read only the required resolution depending on the current zoom level.
+
+To generate these downscaled images, Gaussian filtering (default) is applied before downscaling in order to avoid scaling artifacts, especially in high-frequency images.
 
 ### Gaussian Filtering (Default)
 - **Best for:** Intensity images (fluorescence, brightfield, etc.)
@@ -108,14 +111,19 @@ ome_zarr_image.write(
 - **Use case:** Segmentation masks, label images where each value represents a distinct object/region
 
 ```python
-# For intensity images (default)
-downscale_method='gaussian'
-
-# For label/segmentation images
-downscale_method='nearest'
+ome_zarr_image = OmeZarrImage(
+    path='example.ome.zarr',
+    image=image,
+    dims=dims,
+    axis_units=axis_units,
+    scale_transformations=scale_transformations,
+    downscale_method='gaussian',  # or `nearest`
+    downscale_levels=3,  # Create 3 additional downscale levels
+    overwrite=True
+)
 ```
 
-### GPU Support (Optional)
+## GPU Support (Optional)
 
 For GPU-accelerated downscaling, install with CuPy:
 
@@ -135,7 +143,7 @@ pip install cupy-cuda12x
 - **Small images (<1024×1024)**: CPU may be faster due to GPU overhead
 - **Optimal for**: Multi-level downscaling, large multi-dimensional datasets
 
-#### GPU Device Selection
+#### Device Selection
 
 The library automatically chooses the optimal device, but you can also specify manually:
 

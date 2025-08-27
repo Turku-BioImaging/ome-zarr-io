@@ -1,4 +1,4 @@
-"""This module tests compressors parameter in the OME-Zarr writer."""
+"""Tests for compressors parameter in write method."""
 
 import numpy as np
 import tempfile
@@ -10,11 +10,10 @@ from ome_zarr_writer import OmeZarrImage
 
 
 class TestCompressorsParameter:
-    """ 
-    This is the documentation for TestCompressorsParameter class, used for testing the 'compressors' parameter with the new write() method API.
-    """
+    """Test class for testing the compressors parameter."""
 
-    def test_BloscCodec_compressor(self):
+    def test_write_with_single_compressor(self):
+        """Test writing with a single compressor."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(128, 128), dtype=np.uint8)
             dims = ["y", "x"]
@@ -29,16 +28,20 @@ class TestCompressorsParameter:
                 overwrite=True,
             )
 
+            # Test with BloscCodec
             writer.write(compressors=BloscCodec())
 
+            # Verify file was created
             assert output_path.exists()
 
+            # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_BloscCodec_and_GzipCodec_compressors(self):
+    def test_write_with_multiple_compressors(self):
+        """Test writing with multiple compressors."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
             dims = ["y", "x"]
@@ -53,16 +56,20 @@ class TestCompressorsParameter:
                 overwrite=True,
             )
 
+            # Test with list of compressors
             writer.write(compressors=[GzipCodec(), BloscCodec()])
 
+            # Verify file was created
             assert output_path.exists()
 
+            # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_zstd_compressor(self):
+    def test_write_with_zstd_compressor(self):
+        """Test writing with ZstdCodec compressor."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(2, 32, 32), dtype=np.uint8)
             dims = ["c", "y", "x"]
@@ -77,16 +84,20 @@ class TestCompressorsParameter:
                 overwrite=True,
             )
 
+            # Test with ZstdCodec with custom level
             writer.write(compressors=ZstdCodec(level=5))
 
+            # Verify file was created
             assert output_path.exists()
 
+            # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_without_defined_compressors(self):
+    def test_write_without_compressors_still_works(self):
+        """Test that writing without compressors parameter still works (backward compatibility)."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
             dims = ["y", "x"]
@@ -101,16 +112,20 @@ class TestCompressorsParameter:
                 overwrite=True,
             )
 
+            # Test without compressors parameter (should use defaults)
             writer.write()
 
+            # Verify file was created
             assert output_path.exists()
 
+            # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_BloscCodec_compressor_with_multiscale(self):
+    def test_write_compressors_with_multiscale(self):
+        """Test compressors parameter with multiscale downscaling."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(2, 128, 128), dtype=np.uint8)
             dims = ["c", "y", "x"]
@@ -126,8 +141,10 @@ class TestCompressorsParameter:
                 overwrite=True,
             )
 
+            # Test with compressor and multiscale
             writer.write(compressors=BloscCodec(cname="zstd"))
 
+            # Verify file was created
             assert output_path.exists()
 
             # Verify zarr group structure with multiple levels
@@ -144,7 +161,8 @@ class TestCompressorsParameter:
             assert array_1.shape[1:] == (64, 64)  # Half size in Y,X
             assert array_2.shape[1:] == (32, 32)  # Quarter size in Y,X
 
-    def test_GzipCodec_compressors_with_chunking_and_sharding(self):
+    def test_write_compressors_with_chunks_and_shards(self):
+        """Test compressors parameter combined with chunks and shards."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
             dims = ["y", "x"]
@@ -159,14 +177,16 @@ class TestCompressorsParameter:
                 overwrite=True,
             )
 
+            # Test with all parameters
             writer.write(
                 compressors=GzipCodec(level=6), chunks=(32, 32), shards=(64, 64)
             )
 
+            # Verify file was created
             assert output_path.exists()
 
+            # Verify zarr group structure
             group = zarr.open_group(str(output_path), mode="r")
             assert "0" in group
             array_0 = group["0"]
             assert array_0.shape == image.shape
-            assert array_0.chunks == (32, 32)

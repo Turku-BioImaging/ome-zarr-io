@@ -125,7 +125,8 @@ ome_zarr_image = OmeZarrImage(
     axis_units=axis_units,
     scale_transformations=scale_transformations,
     downscale_method='gaussian',  # or `nearest`
-    downscale_levels=3,  # Create 3 additional downscale levels
+    downscale_levels=3,  # Create 3 additional downscale levels, i.e. 4 multiscales.
+                         # If `None`, no downscale levels will be generated
     overwrite=True
 )
 ```

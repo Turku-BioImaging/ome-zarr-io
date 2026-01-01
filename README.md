@@ -39,31 +39,6 @@ git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
 pip install -r requirements.txt
 ```
 
-### GPU Support (Optional)
-
-For GPU-accelerated downscaling, install with CuPy:
-
-```bash
-# Install with GPU support
-pip install -e ".[gpu]"
-
-# Or install CuPy for your CUDA version separately
-pip install cupy-cuda11x
-pip install cupy-cuda12x
-```
-
-**Requirements:** NVIDIA CUDA-compatible hardware and drivers. If CuPy is not available, the library automatically falls back to CPU computation.
-
-**Performance:** GPU acceleration provides significant speedups for large images and complex downscaling operations:
-- **Large images (≥4096×4096)**: Up to 2.5× faster with multiple downscale levels
-- **Small images (<1024×1024)**: CPU may be faster due to GPU overhead
-- **Optimal for**: Multi-level downscaling, large multi-dimensional datasets
-
-**Device Selection Tips:**
-- Use `device='cuda'` for large images (≥2048×2048) with multiple downscale levels
-- Use `device='cpu'` for small images or simple operations
-- Both Gaussian and nearest-neighbor methods support GPU acceleration
-
 ## Downscaling Methods
 
 ### Gaussian Filtering (Default)
@@ -71,7 +46,7 @@ pip install cupy-cuda12x
 - **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
 - **Use case:** Most microscopy images where preserving smooth intensity variations is important
 
-### Nearest-Neighbor Interpolation  
+### Nearest-Neighbor Interpolation
 - **Best for:** Label/segmentation images with discrete values
 - **Method:** Preserves exact pixel values during downscaling
 - **Use case:** Segmentation masks, label images where each value represents a distinct object/region
@@ -82,57 +57,6 @@ downscale_method='gaussian'
 
 # For label/segmentation images
 downscale_method='nearest'
-
-# For GPU-accelerated processing (requires CuPy)
-from ome_zarr_writer import OmeZarrImage
-
-# GPU acceleration works best with large images and multiple downscale levels
-large_image = np.random.randint(0, 255, size=(4096, 4096), dtype=np.uint16)
-
-ome_zarr_image = OmeZarrImage(
-    path='gpu_example.ome.zarr',
-    image=large_image,
-    dims=['y', 'x'],
-    downscale_method='gaussian',  # Both gaussian and nearest methods support GPU
-    downscale_levels=5,          # More levels = better GPU utilization
-    device='cuda',               # Enable GPU acceleration
-    overwrite=True
-)
-
-# For smaller images or simple operations, CPU may be faster
-small_image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint16)
-cpu_optimized = OmeZarrImage(
-    path='cpu_example.ome.zarr',
-    image=small_image,
-    dims=['y', 'x'],
-    device='cpu',  # Explicitly use CPU for small images
-    overwrite=True
-)
-```
-
-### GPU Device Selection
-
-The library automatically chooses the optimal device, but you can also specify manually:
-
-```python
-from ome_zarr_writer import OmeZarrImage
-from ome_zarr_writer.downscaler import Downscaler
-
-# Check available GPU devices
-devices = Downscaler.list_cuda_devices()
-for device in devices:
-    print(f"GPU {device['device_id']}: {device['device_name']} "
-          f"({device['total_memory_gb']} GB)")
-
-# Use specific GPU device
-ome_zarr_image = OmeZarrImage(
-    path='multi_gpu.ome.zarr',
-    image=image,
-    dims=dims,
-    device='cuda',
-    cuda_device_id=0,  # Use first GPU
-    overwrite=True
-)
 ```
 
 ## Quick Start
@@ -151,7 +75,7 @@ dims = ["c", "z", "y", "x"]
 # Define axis units for each dimension explicitly
 axis_units = {
     "z": "micrometer",
-    "y": "micrometer", 
+    "y": "micrometer",
     "x": "micrometer"
     # Note: 'c' (channel) dimension doesn't need a unit
 }
@@ -160,7 +84,7 @@ axis_units = {
 # Units are determined by axis_units above
 scale_transformations = {
     "z": 0.325,  # 0.325 μm z-step size
-    "y": 0.15,   # 0.15 μm pixel size in Y  
+    "y": 0.15,   # 0.15 μm pixel size in Y
     "x": 0.15    # 0.15 μm pixel size in X
 }
 
@@ -203,7 +127,7 @@ axis_units = {
 # Define scale transformations for all dimensions
 scale_transformations = {
     "t": 0.5,    # 0.5 second frame interval
-    "z": 0.25,   # 0.25 μm z-step size  
+    "z": 0.25,   # 0.25 μm z-step size
     "y": 0.065,  # 0.065 μm pixel size in Y
     "x": 0.065   # 0.065 μm pixel size in X
 }
@@ -346,23 +270,15 @@ This will:
 ### Running tests
 
 ```bash
-# Basic tests (excludes GPU tests)
+# Basic tests
 pytest
 
-# With coverage (excludes GPU tests)
+# With coverage
 ./run_tests.sh cov
 
-# GPU tests only (requires CUDA/CuPy)
-./run_tests.sh gpu
-
-# All tests including GPU tests
-./run_tests.sh all-gpu
-
-# All tests + examples (excludes GPU)
+# All tests + examples
 ./run_tests.sh all
 ```
-
-**Note:** GPU tests are automatically skipped when CUDA/CuPy is not available. In CI/CD environments without GPU hardware, use `-m "not gpu"` to exclude GPU tests.
 
 ### Code formatting and linting
 

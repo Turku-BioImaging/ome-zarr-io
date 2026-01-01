@@ -21,8 +21,6 @@ class Downscaler:
         downscale_factor: float = 2.0,
         downscale_method: Literal["gaussian", "nearest"] = "gaussian",
         downscale_levels: Optional[int] = None,
-        device: Literal["cpu", "cuda"] = "cpu",
-        cuda_device_id: Optional[int] = None,
     ):
         """Initialize the downscaler.
 
@@ -30,8 +28,6 @@ class Downscaler:
             downscale_factor: Factor by which to downscale each level (default: 2.0).
             downscale_method: Method to use for downscaling ("gaussian" or "nearest").
             downscale_levels: Number of downscale levels to create. If None, no downscaling.
-            device: Device to use for computation ("cpu" or "cuda"). Default: "cpu".
-            cuda_device_id: Specific CUDA device ID to use. If None, uses default device.
         """
         if downscale_factor <= 1.0:
             raise ValueError(f"downscale_factor must be > 1.0, got {downscale_factor}")
@@ -39,130 +35,6 @@ class Downscaler:
         self.downscale_factor = downscale_factor
         self.downscale_method = downscale_method
         self.downscale_levels = downscale_levels
-        self.device = device
-        self.cuda_device_id = cuda_device_id
-
-        # Validate device availability
-        self._validate_device()
-
-    def _validate_device(self) -> None:
-        """Validate that the requested device is available.
-
-        Raises:
-            ValueError: If CUDA is requested but not available.
-        """
-        if self.device == "cuda":
-            try:
-                import cupy as cp
-                # Test if CUDA is actually available
-                num_devices = cp.cuda.runtime.getDeviceCount()
-                
-                if self.cuda_device_id is not None:
-                    if self.cuda_device_id < 0 or self.cuda_device_id >= num_devices:
-                        raise ValueError(
-                            f"Invalid CUDA device ID {self.cuda_device_id}. "
-                            f"Available devices: 0-{num_devices-1}"
-                        )
-                    # Test if the specific device is accessible
-                    with cp.cuda.Device(self.cuda_device_id):
-                        cp.cuda.runtime.getDeviceProperties(self.cuda_device_id)
-                else:
-                    # Use default device (0)
-                    self.cuda_device_id = 0
-                    
-            except (ImportError, Exception) as e:
-                import warnings
-                warnings.warn(
-                    f"CUDA device requested but not available: {e}. "
-                    "Falling back to CPU computation.",
-                    UserWarning,
-                )
-                self.device = "cpu"
-                self.cuda_device_id = None
-
-    def _should_use_gpu(self) -> bool:
-        """Check if GPU should be used for computation.
-
-        Returns:
-            True if GPU should be used, False otherwise.
-        """
-        return self.device == "cuda"
-
-    def get_device_info(self) -> dict:
-        """Get information about the current computing device.
-        
-        Returns:
-            Dictionary containing device information.
-        """
-        if not self._should_use_gpu():
-            return {
-                "device_type": "cpu",
-                "device_name": "CPU",
-                "device_id": None,
-            }
-        
-        try:
-            import cupy as cp
-            with cp.cuda.Device(self.cuda_device_id):
-                props = cp.cuda.runtime.getDeviceProperties(self.cuda_device_id)
-                meminfo = cp.cuda.runtime.memGetInfo()
-                free_mem = meminfo[0] / 1024**3
-                total_mem = meminfo[1] / 1024**3
-                used_mem = total_mem - free_mem
-                
-                return {
-                    "device_type": "cuda",
-                    "device_id": self.cuda_device_id,
-                    "device_name": props['name'].decode(),
-                    "compute_capability": f"{props['major']}.{props['minor']}",
-                    "total_memory_gb": round(total_mem, 2),
-                    "used_memory_gb": round(used_mem, 2),
-                    "free_memory_gb": round(free_mem, 2),
-                    "memory_usage_percent": round(used_mem/total_mem*100, 1),
-                    "multiprocessors": props['multiProcessorCount'],
-                }
-        except Exception as e:
-            return {
-                "device_type": "cuda",
-                "device_id": self.cuda_device_id,
-                "error": f"Failed to get device info: {e}"
-            }
-
-    @staticmethod
-    def list_cuda_devices() -> List[dict]:
-        """List all available CUDA devices.
-        
-        Returns:
-            List of dictionaries containing information about each CUDA device.
-        """
-        try:
-            import cupy as cp
-            num_devices = cp.cuda.runtime.getDeviceCount()
-            devices = []
-            
-            for i in range(num_devices):
-                with cp.cuda.Device(i):
-                    props = cp.cuda.runtime.getDeviceProperties(i)
-                    meminfo = cp.cuda.runtime.memGetInfo()
-                    free_mem = meminfo[0] / 1024**3
-                    total_mem = meminfo[1] / 1024**3
-                    used_mem = total_mem - free_mem
-                    
-                    devices.append({
-                        "device_id": i,
-                        "device_name": props['name'].decode(),
-                        "compute_capability": f"{props['major']}.{props['minor']}",
-                        "total_memory_gb": round(total_mem, 2),
-                        "used_memory_gb": round(used_mem, 2),
-                        "free_memory_gb": round(free_mem, 2),
-                        "memory_usage_percent": round(used_mem/total_mem*100, 1),
-                        "multiprocessors": props['multiProcessorCount'],
-                    })
-            
-            return devices
-            
-        except Exception as e:
-            return [{"error": f"Failed to list CUDA devices: {e}"}]
 
     def validate_downscale_levels(self, image_shape: tuple) -> int:
         """Validate and adjust downscale levels based on image dimensions.
@@ -243,7 +115,7 @@ class Downscaler:
         current_array = image
 
         # Create a rescaling function that only operates on Y and X dimensions
-        def rescale_yx_block(block, order: int):
+        def rescale_yx_block(block: np.ndarray, order: int) -> np.ndarray:
             """
             Rescale only the last two dimensions of a block by the downscale factor.
             Parameter `order` is the order of interpolation. 0 = nearest-neighbor,
@@ -255,7 +127,7 @@ class Downscaler:
             scale_factors[-2] = scale_factor  # Y dimension
             scale_factors[-1] = scale_factor  # X dimension
 
-            return rescale(
+            rescaled: np.ndarray = rescale(
                 block,
                 scale=scale_factors,
                 order=order,
@@ -263,6 +135,8 @@ class Downscaler:
                 anti_aliasing=False,  # Already applied Gaussian filter
                 channel_axis=None,
             ).astype(block.dtype)
+
+            return rescaled
 
         for _ in range(1, validated_levels + 1):
             # Check if Y or X dimensions are too small to downscale further
@@ -298,23 +172,6 @@ class Downscaler:
         self, current_array: da.Array, rescale_func
     ) -> Optional[da.Array]:
         """Apply Gaussian filtering followed by downscaling.
-
-        Args:
-            current_array: Current array to downscale.
-            rescale_func: Function to use for rescaling blocks.
-
-        Returns:
-            Downscaled array or None if operation failed.
-        """
-        if self._should_use_gpu():
-            return self._downscale_gaussian_gpu(current_array)
-        else:
-            return self._downscale_gaussian_cpu(current_array, rescale_func)
-
-    def _downscale_gaussian_cpu(
-        self, current_array: da.Array, rescale_func
-    ) -> Optional[da.Array]:
-        """Apply Gaussian filtering followed by downscaling on CPU.
 
         Args:
             current_array: Current array to downscale.
@@ -359,182 +216,10 @@ class Downscaler:
         except (ValueError, RuntimeError):
             return None
 
-    def _downscale_gaussian_gpu(self, current_array: da.Array) -> Optional[da.Array]:
-        """Apply Gaussian filtering followed by downscaling on GPU.
-        
-        Args:
-            current_array: Current array to downscale.
-            
-        Returns:
-            Downscaled array or None if operation failed.
-        """
-        try:
-            import cupy as cp
-            import cupyx.scipy.ndimage as ndi
-        except ImportError:
-            return None
-            
-        # Calculate Gaussian filter sigma for anti-aliasing
-        sigma = self._calculate_gaussian_sigma(current_array.ndim)
-        
-        # Optimize array chunking for GPU processing
-        current_array = current_array.rechunk("100MB")
-        
-        # Calculate output chunk sizes
-        new_chunks = self._calculate_output_chunks(current_array.chunks)
-
-        def filter_and_rescale(block, sigma_list, downscale_factor, cuda_device_id):
-            """Apply Gaussian filtering and rescaling in a single GPU operation."""
-            return self._process_block_on_gpu(
-                block, sigma_list, downscale_factor, cuda_device_id, cp, ndi
-            )
-
-        return da.map_blocks(
-            filter_and_rescale,
-            current_array,
-            sigma_list=sigma,
-            downscale_factor=self.downscale_factor,
-            cuda_device_id=self.cuda_device_id,
-            dtype=current_array.dtype,
-            chunks=new_chunks,
-            drop_axis=None,
-            new_axis=None,
-            meta=np.array([], dtype=current_array.dtype),
-        )
-
-    def _calculate_gaussian_sigma(self, ndim: int) -> List[float]:
-        """Calculate Gaussian filter sigma values for anti-aliasing.
-        
-        Args:
-            ndim: Number of dimensions in the array.
-            
-        Returns:
-            List of sigma values, with non-zero values only for Y and X dimensions.
-        """
-        sigma = [0.0] * ndim
-        sigma_value = (self.downscale_factor - 1) / 4.0
-        sigma[-2] = sigma_value  # Y dimension
-        sigma[-1] = sigma_value  # X dimension
-        return sigma
-
-    def _calculate_output_chunks(self, input_chunks: tuple) -> List[tuple]:
-        """Calculate output chunk sizes after downscaling.
-        
-        Args:
-            input_chunks: Input array chunk sizes.
-            
-        Returns:
-            List of output chunk sizes.
-        """
-        new_chunks = list(input_chunks)
-        # Downscale Y and X dimensions (last two)
-        for dim_idx in [-2, -1]:
-            new_chunks[dim_idx] = tuple(
-                max(1, int(chunk_size / self.downscale_factor))
-                for chunk_size in new_chunks[dim_idx]
-            )
-        return new_chunks
-
-    def _process_block_on_gpu(self, block, sigma_list, downscale_factor, cuda_device_id, cp, ndi):
-        """Process a single block on GPU with error handling.
-        
-        Args:
-            block: Input block to process.
-            sigma_list: Gaussian filter sigma values.
-            downscale_factor: Factor by which to downscale.
-            cuda_device_id: CUDA device ID to use.
-            cp: CuPy module.
-            ndi: CuPy scipy ndimage module.
-            
-        Returns:
-            Processed block as NumPy array.
-        """
-        if block.size == 0:
-            return block
-        
-        with cp.cuda.Device(cuda_device_id):
-            gpu_block = cp.asarray(block)
-            
-            try:
-                # Apply Gaussian filter
-                filtered_gpu = ndi.gaussian_filter(
-                    gpu_block, sigma=sigma_list, mode="nearest"
-                )
-                
-                # Calculate zoom factors for rescaling
-                zoom_factors = self._calculate_zoom_factors(block.ndim, downscale_factor)
-                
-                # Apply rescaling with bilinear interpolation
-                rescaled_gpu = ndi.zoom(
-                    filtered_gpu, zoom=zoom_factors, order=1, prefilter=False
-                )
-                
-                # Convert back to NumPy with original dtype
-                result = cp.asnumpy(rescaled_gpu).astype(block.dtype)
-                
-                # Explicit cleanup
-                del gpu_block, filtered_gpu, rescaled_gpu
-                
-                return result
-                
-            except Exception as e:
-                self._cleanup_gpu_memory(cp)
-                raise RuntimeError(
-                    f"GPU operation failed on device {cuda_device_id}: {e}"
-                ) from e
-
-    def _calculate_zoom_factors(self, ndim: int, downscale_factor: float) -> List[float]:
-        """Calculate zoom factors for rescaling operation.
-        
-        Args:
-            ndim: Number of dimensions in the block.
-            downscale_factor: Factor by which to downscale.
-            
-        Returns:
-            List of zoom factors for each dimension.
-        """
-        zoom_factors = [1.0] * ndim
-        zoom_factor = 1.0 / downscale_factor
-        zoom_factors[-2] = zoom_factor  # Y dimension
-        zoom_factors[-1] = zoom_factor  # X dimension
-        return zoom_factors
-
-    def _cleanup_gpu_memory(self, cp):
-        """Clean up GPU memory after an error.
-        
-        Args:
-            cp: CuPy module.
-        """
-        import gc
-        gc.collect()
-        try:
-            cp.get_default_memory_pool().free_all_blocks()
-        except AttributeError:
-            # Fallback for older CuPy versions
-            cp.get_default_memory_pool().free_all_free()
-
-
     def _downscale_nearest(
         self, current_array: da.Array, rescale_func
     ) -> Optional[da.Array]:
         """Apply nearest-neighbor downscaling.
-
-        Args:
-            current_array: Current array to downscale.
-            rescale_func: Function to use for rescaling blocks.
-
-        Returns:
-            Downscaled array or None if operation failed.
-        """
-        if self._should_use_gpu():
-            return self._downscale_nearest_gpu(current_array, rescale_func)
-        else:
-            return self._downscale_nearest_cpu(current_array, rescale_func)
-
-    def _downscale_nearest_cpu(
-        self, current_array: da.Array, rescale_func
-    ) -> Optional[da.Array]:
-        """Apply nearest-neighbor downscaling on CPU.
 
         Args:
             current_array: Current array to downscale.
@@ -567,69 +252,6 @@ class Downscaler:
             )
         except (ValueError, RuntimeError):
             return None
-
-    def _downscale_nearest_gpu(
-        self, current_array: da.Array, rescale_func
-    ) -> Optional[da.Array]:
-        """Apply nearest-neighbor downscaling on GPU.
-
-        Args:
-            current_array: Current array to downscale.
-            rescale_func: Function to use for rescaling blocks.
-
-        Returns:
-            Downscaled array or None if operation failed.
-        """
-        try:
-            import cupy as cp
-            import cupyx.scipy.ndimage as ndi
-        except ImportError:
-            return None
-        
-        def rescale_yx_block(block, cuda_device_id):
-            """Rescale block using nearest-neighbor interpolation on GPU."""
-            if block.size == 0:
-                return block
-                
-            with cp.cuda.Device(cuda_device_id):
-                try:
-                    array_cp = cp.asarray(block)
-                    # Calculate zoom factors for nearest-neighbor downscaling
-                    zoom_factors = [1.0] * array_cp.ndim
-                    zoom_factor = 1.0 / self.downscale_factor
-                    zoom_factors[-2] = zoom_factor  # Y dimension
-                    zoom_factors[-1] = zoom_factor  # X dimension
-                    
-                    # Use cupyx.scipy.ndimage.zoom for nearest-neighbor interpolation
-                    rescaled_gpu = ndi.zoom(array_cp, zoom_factors, order=0, prefilter=False)
-                    result = cp.asnumpy(rescaled_gpu).astype(block.dtype)
-                    
-                    # Explicit cleanup
-                    del array_cp, rescaled_gpu
-                    
-                    return result
-                    
-                except Exception as e:
-                    self._cleanup_gpu_memory(cp)
-                    raise RuntimeError(
-                        f"GPU nearest-neighbor operation failed on device {cuda_device_id}: {e}"
-                    ) from e
-
-        
-        current_array = current_array.rechunk("100MB")
-        new_chunks = self._calculate_output_chunks(current_array.chunks)
-
-        return da.map_blocks(
-            rescale_yx_block,
-            current_array,
-            cuda_device_id=self.cuda_device_id,
-            dtype=current_array.dtype,
-            chunks=new_chunks,
-            drop_axis=None,
-            new_axis=None,
-            meta=np.array([], dtype=current_array.dtype),
-        )
-
 
     def create_coordinate_transformations_for_levels(
         self,

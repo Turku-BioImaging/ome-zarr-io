@@ -39,9 +39,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gpu = [
-    "cupy-cuda12x",  # Replace '12x' with your specific CUDA version, e.g., 'cupy-cuda120'
-]
 dev = [
     "pytest>=6.0",
     "pytest-cov",
@@ -79,7 +76,7 @@ python_classes = "Test*"
 python_functions = "test_*"
 addopts = [
     "--strict-markers",
-    "--strict-config", 
+    "--strict-config",
     "--verbose",
 ]
 markers = [

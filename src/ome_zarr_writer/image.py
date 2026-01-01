@@ -1,21 +1,23 @@
 """Main OME-Zarr writer implementation."""
 
-from typing import Any, Dict, List, Optional, Union, Literal
-import zarr
-import numpy as np
 from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Union
+
 import dask.array as da
+import numpy as np
+import zarr
 from zarr.core.array import CompressorsLike
+
+from .downscaler import Downscaler
 from .schema_models import (
-    ScaleTransformation,
     Axis,
     Dataset,
     Multiscale,
     OMEMetadata,
-    OMEZarrImageMetadata,
     Omero,
+    OMEZarrImageMetadata,
+    ScaleTransformation,
 )
-from .downscaler import Downscaler
 
 
 class OmeZarrImage:
@@ -38,7 +40,6 @@ class OmeZarrImage:
         downscale_factor: float = 2.0,
         overwrite: bool = False,
         omero_metadata: Optional[Omero] = None,
-        device: Literal["cpu", "cuda"] = "cpu",
     ):
         """Initialize the OME-Zarr writer.
 
@@ -50,7 +51,9 @@ class OmeZarrImage:
                 of dimensions of the input image, or a dictionary that specifies units for each
                 dimension. Dictionary format:
                 - Per-dimension units: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
-            downscale_method: Method to use for downscaling. Either Gaussian filter or nearest-neighbor interpolation; default "gaussian". Use Gaussian filtering for intensity images to avoid aliasing artifacts in downscaled images. Label images should be downscaled using nearest-neighbor interpolation.
+            downscale_method: Method to use for downscaling. Either Gaussian filter or nearest-neighbor interpolation;
+            default "gaussian". Use Gaussian filtering for intensity images to avoid aliasing artifacts in downscaled images.
+            Label images should be downscaled using nearest-neighbor interpolation.
             scale_transformations: Optional dictionary specifying scale values for dimensions.
                 Examples:
                 - {"z": 0.25, "y": 0.1, "x": 0.1} for spatial dimensions
@@ -62,8 +65,6 @@ class OmeZarrImage:
             overwrite: Whether to overwrite existing files.
             omero_metadata: Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
-            device: Device to use for computations. Either "cpu" or "cuda" (default: "cpu").
-                If "cuda" is specified but CUDA is not available, will fall back to CPU with a warning.
         """
         self.path = Path(path)
         # Convert numpy array to dask array if necessary
@@ -87,7 +88,6 @@ class OmeZarrImage:
             downscale_factor=downscale_factor,
             downscale_method=downscale_method,
             downscale_levels=downscale_levels,
-            device=device,
         )
 
         # Store OMERO metadata
@@ -107,19 +107,14 @@ class OmeZarrImage:
     def downscale_method(self) -> Literal["gaussian", "nearest"]:
         """Get the downscale method from the downscaler."""
         from typing import cast
-        return cast(Literal["gaussian", "nearest"], self.downscaler.downscale_method)
 
-    @property
-    def device(self) -> Literal["cpu", "cuda"]:
-        """Get the device from the downscaler."""
-        from typing import cast
-        return cast(Literal["cpu", "cuda"], self.downscaler.device)
+        return cast(Literal["gaussian", "nearest"], self.downscaler.downscale_method)
 
     def _create_downscaled_arrays(self) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.
 
-        Uses the Downscaler instance to create a list of dask arrays where each 
-        subsequent array is downscaled by the specified downscale_factor in the 
+        Uses the Downscaler instance to create a list of dask arrays where each
+        subsequent array is downscaled by the specified downscale_factor in the
         last two dimensions (Y and X axes), while preserving all other dimensions.
 
         Returns:
@@ -142,11 +137,9 @@ class OmeZarrImage:
         # First, get the actual arrays that will be created to determine num_levels
         arrays = self._create_downscaled_arrays()
         num_levels = len(arrays)
-        
+
         return self.downscaler.create_coordinate_transformations_for_levels(
-            self.coordinate_transformations,
-            self.image.shape,
-            num_levels
+            self.coordinate_transformations, self.image.shape, num_levels
         )
 
     def _process_axis_units(
@@ -432,6 +425,7 @@ class OmeZarrImage:
 
             # Create dataset metadata
             from typing import cast
+
             from .schema_models import TranslationTransformation
 
             dataset = Dataset(

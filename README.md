@@ -14,9 +14,9 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Type-safe Python dataclasses implementing the OME-Zarr schema
 - JSON Schema validation for metadata compliance
 - Strict TCZYX dimension ordering
-- Space axis unit validation (26 supported units: angstrom, micrometer, meter, etc.)
-- Time axis unit validation
+- Space and time axis axis unit validation
 - Two downscaling methods: Gaussian filtering (default) and nearest-neighbor interpolation
+- Uses Rust zarrs-python as the default backend.
 
 
 ## Installation
@@ -51,13 +51,6 @@ pip install -r requirements.txt
 - **Method:** Preserves exact pixel values during downscaling
 - **Use case:** Segmentation masks, label images where each value represents a distinct object/region
 
-```python
-# For intensity images (default)
-downscale_method='gaussian'
-
-# For label/segmentation images
-downscale_method='nearest'
-```
 
 ## Quick Start
 
@@ -102,50 +95,6 @@ ome_zarr_image = OmeZarrImage(
 # Write the OME-Zarr file
 ome_zarr_image.write()
 
-print("✅ Successfully created example.ome.zarr")
-```
-
-### Time-lapse Image with Scale Transformations
-
-```python
-import numpy as np
-from ome_zarr_writer import OmeZarrImage
-
-# Create sample 4D time-lapse data (T, Z, Y, X)
-image = np.random.randint(0, 255, size=(10, 8, 256, 256), dtype=np.uint16)
-
-dims = ["t", "z", "y", "x"]
-
-# Define axis units for both temporal and spatial dimensions
-axis_units = {
-    "t": "second",       # Time dimension in seconds
-    "z": "micrometer",   # Z dimension in micrometers
-    "y": "micrometer",   # Y dimension in micrometers
-    "x": "micrometer"    # X dimension in micrometers
-}
-
-# Define scale transformations for all dimensions
-scale_transformations = {
-    "t": 0.5,    # 0.5 second frame interval
-    "z": 0.25,   # 0.25 μm z-step size
-    "y": 0.065,  # 0.065 μm pixel size in Y
-    "x": 0.065   # 0.065 μm pixel size in X
-}
-
-ome_zarr_image = OmeZarrImage(
-    path='timelapse.ome.zarr',
-    image=image,
-    dims=dims,
-    axis_units=axis_units,
-    scale_transformations=scale_transformations,
-    downscale_method='gaussian',  # Use Gaussian filtering for time-lapse data
-    downscale_levels=2,
-    overwrite=True
-)
-
-ome_zarr_image.write()
-
-print("✅ Successfully created timelapse.ome.zarr with temporal metadata")
 ```
 
 ### Advanced Storage Configuration
@@ -212,14 +161,6 @@ All input images must follow the **TCZYX** order where T (time), C (channel), an
 | **TCYX** | T, C, Y, X | Time-lapse multichannel | `(50, 2, 128, 128)` |
 | **TCZYX** | T, C, Z, Y, X | 5D live cell imaging | `(20, 3, 8, 64, 64)` |
 
-### Invalid Orderings (Rejected)
-
-```python
-# ❌ These will raise ValueError:
-dims = ["x", "y"]        # X, Y - wrong order, should be Y, X
-dims = ["z", "c", "t"]   # Z, C, T - wrong order, should be T, C, Z
-dims = ["c", "z", "d"]   # Invalid 'D' dimension - not supported
-```
 
 ## Examples
 
@@ -247,9 +188,7 @@ The `examples/` directory contains **4 comprehensive examples** designed for pro
   - Multichannel setups
   - Validation examples
 
-**Quick start:** Run `python examples/getting_started.py` to see essential usage patterns.
 
-For the complete migration guide and detailed organization, see [`examples/README.md`](examples/README.md).
 
 ## Development
 

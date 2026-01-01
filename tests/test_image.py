@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 import dask.array as da
 from pathlib import Path
+import zarr
 from ome_zarr_writer.image import OmeZarrImage
 from ome_zarr_writer.schema_models import ScaleTransformation
 
@@ -159,3 +160,99 @@ def test_multichannel_image_dims(temp_dir):
     # Check that channel axis has no unit
     channel_axis = next(ax for ax in writer.axes if ax.name == "c")
     assert channel_axis.unit is None
+
+
+def test_zarr_backend_default(temp_dir, sample_2d_image):
+    """Test that default zarr_backend is 'zarrs' and configures zarr properly."""
+    path = temp_dir / "test.zarr"
+    dims = ["y", "x"]
+    axis_units = {"y": "micrometer", "x": "micrometer"}
+
+    writer = OmeZarrImage(
+        path=path, image=sample_2d_image, dims=dims, axis_units=axis_units
+    )
+
+    assert writer.zarr_backend == "zarrs"
+    # Check that zarr config has been set for zarrs
+    config = zarr.config.get("codec_pipeline")
+    assert config is not None
+    assert config["path"] == "zarrs.ZarrsCodecPipeline"
+
+
+def test_zarr_backend_zarrs_explicit(temp_dir, sample_2d_image):
+    """Test explicitly setting zarr_backend to 'zarrs'."""
+    path = temp_dir / "test.zarr"
+    dims = ["y", "x"]
+    axis_units = {"y": "micrometer", "x": "micrometer"}
+
+    writer = OmeZarrImage(
+        path=path,
+        image=sample_2d_image,
+        dims=dims,
+        axis_units=axis_units,
+        zarr_backend="zarrs",
+    )
+
+    assert writer.zarr_backend == "zarrs"
+    # Check that zarr config has been set for zarrs
+    config = zarr.config.get("codec_pipeline")
+    assert config is not None
+    assert config["path"] == "zarrs.ZarrsCodecPipeline"
+    assert config["chunk_concurrent_minimum"] == 4
+    assert config["direct_io"] is True
+    assert config["strict"] is True
+
+
+def test_zarr_backend_zarr_python(temp_dir, sample_2d_image):
+    """Test setting zarr_backend to 'zarr-python'."""
+    path = temp_dir / "test.zarr"
+    dims = ["y", "x"]
+    axis_units = {"y": "micrometer", "x": "micrometer"}
+
+    writer = OmeZarrImage(
+        path=path,
+        image=sample_2d_image,
+        dims=dims,
+        axis_units=axis_units,
+        zarr_backend="zarr-python",
+    )
+
+    assert writer.zarr_backend == "zarr-python"
+    # When using zarr-python, config should be reset but no custom codec_pipeline
+    config = zarr.config.get("codec_pipeline")
+    # After reset, codec_pipeline should not have the zarrs path
+    if config is not None:
+        assert config.get("path") != "zarrs.ZarrsCodecPipeline"
+
+
+def test_zarr_config_isolation(temp_dir, sample_2d_image):
+    """Test that zarr config changes are applied correctly for different backends."""
+    path1 = temp_dir / "test1.zarr"
+    path2 = temp_dir / "test2.zarr"
+    dims = ["y", "x"]
+    axis_units = {"y": "micrometer", "x": "micrometer"}
+
+    # Create with zarrs backend
+    writer1 = OmeZarrImage(
+        path=path1,
+        image=sample_2d_image,
+        dims=dims,
+        axis_units=axis_units,
+        zarr_backend="zarrs",
+    )
+    config_zarrs = zarr.config.get("codec_pipeline")
+    assert config_zarrs is not None
+    assert config_zarrs["path"] == "zarrs.ZarrsCodecPipeline"
+
+    # Create with zarr-python backend
+    writer2 = OmeZarrImage(
+        path=path2,
+        image=sample_2d_image,
+        dims=dims,
+        axis_units=axis_units,
+        zarr_backend="zarr-python",
+    )
+    config_python = zarr.config.get("codec_pipeline")
+    # After switching to zarr-python, zarrs config should not be present
+    if config_python is not None:
+        assert config_python.get("path") != "zarrs.ZarrsCodecPipeline"

@@ -14,7 +14,7 @@ from ome_zarr_writer import OmeZarrImage
 np.random.seed(88971)
 
 # Declare 3D array.
-# Write to disk using zarr-python backend.
+# Benchmark writing using both zarrs (Rust) and zarr-python backends.
 array = np.random.randint(0, 65535, size=(300, 2048, 2048), dtype=np.uint16)
 dims = ["z", "y", "x"]
 axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}

@@ -22,24 +22,16 @@ run_command() {
 # Parse command line arguments
 case "${1:-test}" in
     "test"|"")
-        echo "Running basic tests (excluding GPU tests)..."
-        run_command "pytest tests/ -v -m 'not gpu'"
-        ;;
-    "cov"|"coverage")
-        echo "Running tests with coverage (excluding GPU tests)..."
-        run_command "pytest tests/ --cov=src/ome_zarr_writer --cov-report=term-missing -m 'not gpu'"
-        ;;
-    "gpu")
-        echo "Running GPU tests only..."
-        run_command "pytest tests/ -v -m 'gpu'"
-        ;;
-    "all-gpu")
-        echo "Running ALL tests including GPU tests..."
+        echo "Running basic tests..."
         run_command "pytest tests/ -v"
         ;;
+    "cov"|"coverage")
+        echo "Running tests with coverage..."
+        run_command "pytest tests/ --cov=src/ome_zarr_writer --cov-report=term-missing"
+        ;;
     "fast")
-        echo "Running fast tests only (excluding GPU and slow tests)..."
-        run_command "pytest tests/ -v -m 'not slow and not gpu'"
+        echo "Running fast tests only (excluding slow tests)..."
+        run_command "pytest tests/ -v -m 'not slow'"
         ;;
     "examples")
         echo "Running examples..."
@@ -68,8 +60,8 @@ case "${1:-test}" in
         fi
         ;;
     "all")
-        echo "Running full test suite (excluding GPU tests)..."
-        run_command "pytest tests/ --cov=src/ome_zarr_writer --cov-report=term-missing -m 'not gpu'"
+        echo "Running full test suite..."
+        run_command "pytest tests/ --cov=src/ome_zarr_writer --cov-report=term-missing"
         echo "Running examples..."
         run_command "python examples/schema_example.py"
         run_command "python examples/integration_example.py"
@@ -78,15 +70,13 @@ case "${1:-test}" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  test, (default)  - Run basic tests (excluding GPU tests)"
-        echo "  cov, coverage    - Run tests with coverage (excluding GPU tests)"
-        echo "  gpu             - Run GPU tests only (requires CUDA/CuPy)"
-        echo "  all-gpu         - Run ALL tests including GPU tests"
-        echo "  fast            - Run fast tests only (excluding GPU and slow tests)"
+        echo "  test, (default)  - Run basic tests"
+        echo "  cov, coverage    - Run tests with coverage"
+        echo "  fast            - Run fast tests only (excluding slow tests)"
         echo "  examples        - Run example scripts"
         echo "  lint            - Run linting checks"
         echo "  format          - Format code with black"
-        echo "  all             - Run tests, coverage, and examples (excluding GPU)"
+        echo "  all             - Run tests, coverage, and examples"
         echo "  help            - Show this help"
         ;;
     *)

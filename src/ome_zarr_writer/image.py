@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
+import contextlib
 
 import dask.array as da
 import numpy as np
@@ -96,28 +97,9 @@ class OmeZarrImage:
         # Store OMERO metadata
         self.omero_metadata = omero_metadata
 
-        # Configure backend
+        # Backend selection is stored and applied only during writes to avoid
+        # polluting the process-wide zarr.config
         self.zarr_backend = zarr_backend
-        if self.zarr_backend == "zarrs":
-            zarr.config.reset()
-            zarr.config.set(
-                {
-                    "threading.max_workers": None,
-                    "array.write_empty_chunks": False,
-                    "codec_pipeline": {
-                        "path": "zarrs.ZarrsCodecPipeline",
-                        "batch_size": None,
-                        "validate_checksums": True,
-                        "chunk_concurrent_maximum": None,
-                        "chunk_concurrent_minimum": 4,
-                        "direct_io": True,
-                        "strict": True,
-                    },
-                }
-            )
-
-        else:
-            zarr.config.reset()
 
     @property
     def downscale_levels(self) -> Optional[int]:
@@ -400,80 +382,112 @@ class OmeZarrImage:
             else:
                 self.path.unlink()
 
-        # Create the root zarr group
-        root_group = zarr.create_group(
-            str(self.path), overwrite=self.overwrite, zarr_format=3
-        )
+        backend_cfg = self._backend_config()
 
-        # Generate downscaled arrays
-        arrays = self._create_downscaled_arrays()
-
-        # Generate coordinate transformations for each level
-        level_transformations = self._create_coordinate_transformations_for_levels()
-
-        # Create datasets for each resolution level
-        datasets = []
-        for level, array in enumerate(arrays):
-            # Convert dask array to numpy for zarr storage
-            array_data: np.ndarray = np.asarray(
-                array.compute() if hasattr(array, "compute") else array
+        with self._zarr_config_context(backend_cfg):
+            # Create the root zarr group
+            root_group = zarr.create_group(
+                str(self.path), overwrite=self.overwrite, zarr_format=3
             )
 
-            # Prepare zarr array creation arguments
-            zarr_kwargs = {
-                "name": str(level),
-                "shape": array_data.shape,
-                "dtype": array_data.dtype,
-            }
+            # Generate downscaled arrays
+            arrays = self._create_downscaled_arrays()
 
-            if chunks is not None:
-                zarr_kwargs["chunks"] = chunks
+            # Generate coordinate transformations for each level
+            level_transformations = self._create_coordinate_transformations_for_levels()
 
-            if shards is not None:
-                zarr_kwargs["shards"] = shards
+            # Create datasets for each resolution level
+            datasets = []
+            for level, array in enumerate(arrays):
+                # Convert dask array to numpy for zarr storage
+                array_data: np.ndarray = np.asarray(
+                    array.compute() if hasattr(array, "compute") else array
+                )
 
-            if compressors is not None:
-                zarr_kwargs["compressors"] = compressors
+                # Prepare zarr array creation arguments
+                zarr_kwargs = {
+                    "name": str(level),
+                    "shape": array_data.shape,
+                    "dtype": array_data.dtype,
+                }
 
-            # Create zarr array for this level and store the data
-            zarr_array = root_group.create_array(**zarr_kwargs)  # type: ignore
-            zarr_array[:] = array_data
+                if chunks is not None:
+                    zarr_kwargs["chunks"] = chunks
 
-            # Get coordinate transformations for this level
-            if level_transformations and level < len(level_transformations):
-                transformations = level_transformations[level]
-            else:
-                # Create default scale transformation if none provided
-                transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
+                if shards is not None:
+                    zarr_kwargs["shards"] = shards
 
-            # Create dataset metadata
-            from typing import cast
+                if compressors is not None:
+                    zarr_kwargs["compressors"] = compressors
 
-            from .schema_models import TranslationTransformation
+                # Create zarr array for this level and store the data
+                zarr_array = root_group.create_array(**zarr_kwargs)  # type: ignore
+                zarr_array[:] = array_data
 
-            dataset = Dataset(
-                path=str(level),
-                coordinateTransformations=cast(
-                    List[Union[ScaleTransformation, TranslationTransformation]],
-                    transformations,
-                ),
+                # Get coordinate transformations for this level
+                if level_transformations and level < len(level_transformations):
+                    transformations = level_transformations[level]
+                else:
+                    # Create default scale transformation if none provided
+                    transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
+
+                # Create dataset metadata
+                from typing import cast
+
+                from .schema_models import TranslationTransformation
+
+                dataset = Dataset(
+                    path=str(level),
+                    coordinateTransformations=cast(
+                        List[Union[ScaleTransformation, TranslationTransformation]],
+                        transformations,
+                    ),
+                )
+                datasets.append(dataset)
+
+            # Create multiscale metadata
+            multiscale = Multiscale(
+                datasets=datasets,
+                axes=self.axes,
+                name=self.path.stem,  # Use filename as name
             )
-            datasets.append(dataset)
 
-        # Create multiscale metadata
-        multiscale = Multiscale(
-            datasets=datasets,
-            axes=self.axes,
-            name=self.path.stem,  # Use filename as name
-        )
+            # Create OME metadata
+            ome_metadata = OMEMetadata(
+                multiscales=[multiscale], version="0.5", omero=self.omero_metadata
+            )
 
-        # Create OME metadata
-        ome_metadata = OMEMetadata(
-            multiscales=[multiscale], version="0.5", omero=self.omero_metadata
-        )
+            # Create final metadata container
+            metadata = OMEZarrImageMetadata(ome=ome_metadata)
 
-        # Create final metadata container
-        metadata = OMEZarrImageMetadata(ome=ome_metadata)
+            # Write metadata to zarr attributes
+            root_group.attrs.update(metadata.to_dict())
 
-        # Write metadata to zarr attributes
-        root_group.attrs.update(metadata.to_dict())
+    def _backend_config(self) -> Optional[Dict[str, Any]]:
+        """Return backend-specific zarr configuration.
+
+        The configuration is applied in a scoped context during writes to avoid
+        mutating global state for other instances.
+        """
+        if self.zarr_backend != "zarrs":
+            return None
+
+        return {
+            "threading.max_workers": None,
+            "array.write_empty_chunks": False,
+            "codec_pipeline": {
+                "path": "zarrs.ZarrsCodecPipeline",
+                "batch_size": None,
+                "validate_checksums": True,
+                "chunk_concurrent_maximum": None,
+                "chunk_concurrent_minimum": 4,
+                "direct_io": True,
+                "strict": True,
+            },
+        }
+
+    def _zarr_config_context(self, cfg: Optional[Dict[str, Any]]):
+        """Context manager that applies backend config without leaking globally."""
+        if cfg is None:
+            return contextlib.nullcontext()
+        return zarr.config.set(cfg)

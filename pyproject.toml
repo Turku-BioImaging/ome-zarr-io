@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ome-zarr-writer"
-version = "0.3.2"
+version = "0.4.0"
 description = "Write valid OME-Zarr 0.5 multiscale images"
 readme = "README.md"
 license = "MIT"
@@ -35,7 +35,8 @@ dependencies = [
     "jsonschema>=4.0.0",
     "numpy>=1.20.0",
     "scikit-image",
-    "zarr>=3,<4"
+    "zarr>=3,<4",
+    "zarrs>=0.2.1"
 ]
 
 [project.optional-dependencies]

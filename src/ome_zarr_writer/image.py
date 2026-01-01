@@ -40,6 +40,7 @@ class OmeZarrImage:
         downscale_factor: float = 2.0,
         overwrite: bool = False,
         omero_metadata: Optional[Omero] = None,
+        zarr_backend: Literal["zarr-python", "zarrs"] = "zarrs",
     ):
         """Initialize the OME-Zarr writer.
 
@@ -65,6 +66,8 @@ class OmeZarrImage:
             overwrite: Whether to overwrite existing files.
             omero_metadata: Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
+            zarr_backend: Zarr backend to use for writing. Either "zarr-python" or "zarrs"
+                (default: "zarrs").
         """
         self.path = Path(path)
         # Convert numpy array to dask array if necessary
@@ -92,6 +95,29 @@ class OmeZarrImage:
 
         # Store OMERO metadata
         self.omero_metadata = omero_metadata
+
+        # Configure backend
+        self.zarr_backend = zarr_backend
+        if self.zarr_backend == "zarrs":
+            zarr.config.reset()
+            zarr.config.set(
+                {
+                    "threading.max_workers": None,
+                    "array.write_empty_chunks": False,
+                    "codec_pipeline": {
+                        "path": "zarrs.ZarrsCodecPipeline",
+                        "batch_size": None,
+                        "validate_checksums": True,
+                        "chunk_concurrent_maximum": None,
+                        "chunk_concurrent_minimum": 4,
+                        "direct_io": True,
+                        "strict": True,
+                    },
+                }
+            )
+
+        else:
+            zarr.config.reset()
 
     @property
     def downscale_levels(self) -> Optional[int]:
@@ -400,20 +426,17 @@ class OmeZarrImage:
                 "dtype": array_data.dtype,
             }
 
-            # Add chunks parameter if specified
             if chunks is not None:
                 zarr_kwargs["chunks"] = chunks
 
-            # Add shards parameter if specified (zarr v3 feature)
             if shards is not None:
                 zarr_kwargs["shards"] = shards
 
-            # Add compressors parameter if specified
             if compressors is not None:
                 zarr_kwargs["compressors"] = compressors
 
             # Create zarr array for this level and store the data
-            zarr_array = root_group.create_array(**zarr_kwargs)
+            zarr_array = root_group.create_array(**zarr_kwargs)  # type: ignore
             zarr_array[:] = array_data
 
             # Get coordinate transformations for this level
@@ -454,11 +477,3 @@ class OmeZarrImage:
 
         # Write metadata to zarr attributes
         root_group.attrs.update(metadata.to_dict())
-
-        # zarr.consolidate_metadata(str(self.path))
-
-        # print(f"✅ Successfully wrote OME-Zarr to: {self.path}")
-        # print(f"   - {len(arrays)} resolution levels")
-        # print(f"   - Shape: {self.image.shape}")
-        # print(f"   - Dimensions: {self.dims}")
-        # print(f"   - Axes: {[(ax.name, ax.type, ax.unit) for ax in self.axes]}")

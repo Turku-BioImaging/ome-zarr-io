@@ -12,7 +12,7 @@ from ome_zarr_writer import OmeZarrImage
 class TestCompressorsParameter:
     """Test class for testing the compressors parameter."""
 
-    def test_write_with_single_compressor(self):
+    def test_write_with_single_compressor(self) -> None:
         """Test writing with a single compressor."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(128, 128), dtype=np.uint8)
@@ -40,7 +40,7 @@ class TestCompressorsParameter:
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_write_with_multiple_compressors(self):
+    def test_write_with_multiple_compressors(self) -> None:
         """Test writing with multiple compressors."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
@@ -68,7 +68,7 @@ class TestCompressorsParameter:
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_write_with_zstd_compressor(self):
+    def test_write_with_zstd_compressor(self) -> None:
         """Test writing with ZstdCodec compressor."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(2, 32, 32), dtype=np.uint8)
@@ -96,7 +96,7 @@ class TestCompressorsParameter:
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_write_without_compressors_still_works(self):
+    def test_write_without_compressors_still_works(self) -> None:
         """Test that writing without compressors parameter still works (backward compatibility)."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
@@ -124,7 +124,7 @@ class TestCompressorsParameter:
             array_0 = group["0"]
             assert array_0.shape == image.shape
 
-    def test_write_compressors_with_multiscale(self):
+    def test_write_compressors_with_multiscale(self) -> None:
         """Test compressors parameter with multiscale downscaling."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(2, 128, 128), dtype=np.uint8)
@@ -138,6 +138,7 @@ class TestCompressorsParameter:
                 dims=dims,
                 axis_units=axis_units,
                 downscale_levels=2,
+                downscale_method="nearest",
                 overwrite=True,
             )
 
@@ -161,7 +162,7 @@ class TestCompressorsParameter:
             assert array_1.shape[1:] == (64, 64)  # Half size in Y,X
             assert array_2.shape[1:] == (32, 32)  # Quarter size in Y,X
 
-    def test_write_compressors_with_chunks_and_shards(self):
+    def test_write_compressors_with_chunks_and_shards(self) -> None:
         """Test compressors parameter combined with chunks and shards."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)

@@ -53,7 +53,8 @@ pip install -r requirements.txt
 
 ## Benchmarks
 The Rust-library `zarrs-python` is used as a backend as it offers significantly faster I/O performance
-compared to the vanilla `zarr-python`.
+compared to the vanilla `zarr-python`. The table below shows write times on a 16-core AMD Ryzen 9 7940HS 32GB RAM.
+See `./benchmarks/test_write_speed.py` for more details.
 
 | Backend | Elapsed Time |
 |---------|-------------|

@@ -1,10 +1,12 @@
 """Downscaling functionality for OME-Zarr multiscale pyramids."""
 
 from typing import List, Literal, Optional
-import numpy as np
+
 import dask.array as da
 import dask_image.ndfilters
+import numpy as np
 from skimage.transform import rescale
+
 from .schema_models import ScaleTransformation
 
 
@@ -112,65 +114,51 @@ class Downscaler:
             return [image]
 
         arrays = [image]  # Level 0: original resolution
-        current_array = image
-
-        # Create a rescaling function that only operates on Y and X dimensions
-        def rescale_yx_block(block: np.ndarray, order: int) -> np.ndarray:
-            """
-            Rescale only the last two dimensions of a block by the downscale factor.
-            Parameter `order` is the order of interpolation. 0 = nearest-neighbor,
-            1 = bilinear. See skimage.transform.warp documentation for details.
-            """
-            # Create scale factors: 1 for all dimensions except last two
-            scale_factors = [1.0] * block.ndim
-            scale_factor = 1.0 / self.downscale_factor
-            scale_factors[-2] = scale_factor  # Y dimension
-            scale_factors[-1] = scale_factor  # X dimension
-
-            rescaled: np.ndarray = rescale(
-                block,
-                scale=scale_factors,
-                order=order,
-                preserve_range=True,
-                anti_aliasing=False,  # Already applied Gaussian filter
-                channel_axis=None,
-            ).astype(block.dtype)
-
-            return rescaled
 
         for _ in range(1, validated_levels + 1):
             # Check if Y or X dimensions are too small to downscale further
             if (
-                current_array.shape[-2] / self.downscale_factor < 1
-                or current_array.shape[-1] / self.downscale_factor < 1
+                arrays[-1].shape[-2] / self.downscale_factor < 1
+                or arrays[-1].shape[-1] / self.downscale_factor < 1
             ):
-                # Stop creating more levels if dimensions become too small
                 break
 
-            # Validate downscale_method, if not set silently to default Gaussian
-            method = self.downscale_method
-            if method not in {"gaussian", "nearest"}:
-                method = "gaussian"
-
-            # Apply the chosen downscale method
-            if method == "gaussian":
-                current_array = self._downscale_gaussian(
-                    current_array, rescale_yx_block
-                )
-            elif method == "nearest":
-                current_array = self._downscale_nearest(current_array, rescale_yx_block)
-
-            if current_array is None:
-                # If rescaling failed, stop here
-                break
-
-            arrays.append(current_array)
+            downscaled: da.Array = (
+                self._downscale_gaussian(arrays[-1])
+                if self.downscale_method == "gaussian"
+                else self._downscale_nearest(arrays[-1])
+            )
+            arrays.append(downscaled)
 
         return arrays
 
+    def __rescale_yx_block(self, block: np.ndarray, order: int) -> np.ndarray:
+        """
+        Rescale only the last two dimensions of a block by the downscale factor.
+        Parameter `order` is the order of interpolation. 0 = nearest-neighbor,
+        1 = bilinear. See skimage.transform.warp documentation for details.
+        """
+        # Create scale factors: 1 for all dimensions except last two
+        scale_factors = [1.0] * block.ndim
+        scale_factor = 1.0 / self.downscale_factor
+        scale_factors[-2] = scale_factor  # Y dimension
+        scale_factors[-1] = scale_factor  # X dimension
+
+        rescaled: np.ndarray = rescale(
+            block,
+            scale=scale_factors,
+            order=order,
+            preserve_range=True,
+            anti_aliasing=False,  # Already applied Gaussian filter
+            channel_axis=None,
+        ).astype(block.dtype)
+
+        return rescaled
+
     def _downscale_gaussian(
-        self, current_array: da.Array, rescale_func
-    ) -> Optional[da.Array]:
+        self,
+        current_array: da.Array,
+    ) -> da.Array:
         """Apply Gaussian filtering followed by downscaling.
 
         Args:
@@ -180,12 +168,11 @@ class Downscaler:
         Returns:
             Downscaled array or None if operation failed.
         """
-        # Apply Gaussian filter to prevent aliasing
-        # Sigma is proportional to the downscale factor
-        # For factor=2, sigma=0.5; for factor=4, sigma=1.0, etc.
+        # Apply Gaussian filter before downscaling to prevent aliasing.
+        # Use sigma=1 for Y and X dimensions. Other dimensions have sigma=0 (no filtering).
         sigma = [0.0] * current_array.ndim
-        sigma[-2] = (self.downscale_factor - 1) / 4.0  # Y dimension
-        sigma[-1] = (self.downscale_factor - 1) / 4.0  # X dimension
+        sigma[-2] = 1
+        sigma[-1] = 1
 
         filtered_array = dask_image.ndfilters.gaussian_filter(
             current_array, sigma=sigma, mode="nearest"
@@ -193,32 +180,26 @@ class Downscaler:
 
         # Calculate new chunk sizes (also downscaled for Y and X dimensions)
         new_chunks = list(filtered_array.chunks)
-        new_chunks[-2] = tuple(
-            max(1, int(chunk_size / self.downscale_factor))
-            for chunk_size in new_chunks[-2]
-        )
-        new_chunks[-1] = tuple(
-            max(1, int(chunk_size / self.downscale_factor))
-            for chunk_size in new_chunks[-1]
-        )
-
-        try:
-            return da.map_blocks(
-                rescale_func,
-                filtered_array,
-                dtype=filtered_array.dtype,
-                chunks=new_chunks,
-                drop_axis=None,
-                new_axis=None,
-                meta=np.array([], dtype=filtered_array.dtype),
-                order=1,  # use bicubic interpolation on Gaussian-filtered data
+        for dim in [-2, -1]:
+            new_chunks[dim] = tuple(
+                max(1, int(chunk_size / self.downscale_factor))
+                for chunk_size in new_chunks[dim]
             )
-        except (ValueError, RuntimeError):
-            return None
 
-    def _downscale_nearest(
-        self, current_array: da.Array, rescale_func
-    ) -> Optional[da.Array]:
+        downscaled: da.Array = da.map_blocks(
+            self.__rescale_yx_block,
+            filtered_array,
+            dtype=filtered_array.dtype,
+            chunks=new_chunks,
+            drop_axis=None,
+            new_axis=None,
+            meta=np.array([], dtype=filtered_array.dtype),
+            order=1,  # use bicubic interpolation on Gaussian-filtered data
+        )
+
+        return downscaled
+
+    def _downscale_nearest(self, current_array: da.Array) -> da.Array:
         """Apply nearest-neighbor downscaling.
 
         Args:
@@ -226,7 +207,7 @@ class Downscaler:
             rescale_func: Function to use for rescaling blocks.
 
         Returns:
-            Downscaled array or None if operation failed.
+            Downscaled dask array.
         """
         # Calculate new chunk sizes (also downscaled for Y and X dimensions)
         new_chunks = list(current_array.chunks)
@@ -239,19 +220,18 @@ class Downscaler:
             for chunk_size in new_chunks[-1]
         )
 
-        try:
-            return da.map_blocks(
-                rescale_func,
-                current_array,
-                dtype=current_array.dtype,
-                chunks=tuple(new_chunks),
-                drop_axis=None,
-                new_axis=None,
-                meta=np.array([], dtype=current_array.dtype),
-                order=0,  # nearest-neighbor interpolation
-            )
-        except (ValueError, RuntimeError):
-            return None
+        downscaled: da.Array = da.map_blocks(
+            self.__rescale_yx_block,
+            current_array,
+            dtype=current_array.dtype,
+            chunks=tuple(new_chunks),
+            drop_axis=None,
+            new_axis=None,
+            meta=np.array([], dtype=current_array.dtype),
+            order=0,  # nearest-neighbor interpolation
+        )
+
+        return downscaled
 
     def create_coordinate_transformations_for_levels(
         self,

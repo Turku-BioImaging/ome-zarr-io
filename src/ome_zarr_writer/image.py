@@ -129,7 +129,7 @@ class OmeZarrImage:
             List of downscaled dask arrays. The first array is the original image,
             followed by progressively downscaled versions.
         """
-        return self.downscaler.create_downscaled_arrays(self.image)
+        return self.downscaler.create_downscaled_arrays(da.asarray(self.image))
 
     def _create_coordinate_transformations_for_levels(
         self,

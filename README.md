@@ -51,6 +51,15 @@ pip install -r requirements.txt
 - **Method:** Preserves exact pixel values during downscaling
 - **Use case:** Segmentation masks, label images where each value represents a distinct object/region
 
+## Benchmarks
+The Rust-library `zarrs-python` is used as a backend as it offers significantly faster I/O performance
+compared to the vanilla `zarr-python`.
+
+| Backend | Elapsed Time |
+|---------|-------------|
+| Rust    | 1.82 seconds |
+| Python  | 18.16 seconds |
+
 
 ## Quick Start
 
@@ -160,34 +169,6 @@ All input images must follow the **TCZYX** order where T (time), C (channel), an
 | **TZYX** | T, Z, Y, X | 4D live imaging | `(50, 10, 128, 128)` |
 | **TCYX** | T, C, Y, X | Time-lapse multichannel | `(50, 2, 128, 128)` |
 | **TCZYX** | T, C, Z, Y, X | 5D live cell imaging | `(20, 3, 8, 64, 64)` |
-
-
-## Examples
-
-The `examples/` directory contains **4 comprehensive examples** designed for progressive learning:
-
-- **`examples/getting_started.py`** - **Start here!** Essential usage patterns
-  - Simple 2D and 3D image writing
-  - Time-lapse data handling
-  - Basic compression and chunking
-
-- **`examples/advanced_features.py`** - Optimization and performance features
-  - Compression algorithm comparison
-  - Custom chunking strategies
-  - Multiscale pyramid optimization
-  - Performance considerations
-
-- **`examples/dimension_examples.py`** - Complete axis and dimension guide
-  - All supported dimension orders (2D to 5D)
-  - Spatial and temporal units
-  - Scale transformations
-  - Coordinate systems
-
-- **`examples/metadata_examples.py`** - Advanced metadata capabilities
-  - Metadata configuration
-  - Multichannel setups
-  - Validation examples
-
 
 
 ## Development

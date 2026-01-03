@@ -418,12 +418,8 @@ class OmeZarrImage:
                     zarr_kwargs["compressors"] = compressors
 
                 # Create zarr array for this level and store the data
-                # zarr_array = root_group.create_array(**zarr_kwargs)
-                # zarr_array[:] = array.compute()
-                array.to_zarr(
-                    url=root_group.store,
-                    overwrite=self.overwrite,
-                    zarr_array_kwargs=zarr_kwargs)
+                zarr_array = root_group.create_array(**zarr_kwargs)
+                zarr_array[:] = array.compute()
 
                 # Get coordinate transformations for this level
                 if level_transformations and level < len(level_transformations):

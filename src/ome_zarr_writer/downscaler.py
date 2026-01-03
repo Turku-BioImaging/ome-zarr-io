@@ -171,8 +171,8 @@ class Downscaler:
         # Apply Gaussian filter before downscaling to prevent aliasing.
         # Use sigma=1 for Y and X dimensions. Other dimensions have sigma=0 (no filtering).
         sigma = [0.0] * current_array.ndim
-        sigma[-2] = 1
-        sigma[-1] = 1
+        sigma[-2] = 0.25
+        sigma[-1] = 0.25
 
         filtered_array = dask_image.ndfilters.gaussian_filter(
             current_array, sigma=sigma, mode="nearest"

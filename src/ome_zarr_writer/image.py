@@ -1,8 +1,9 @@
 """Main OME-Zarr writer implementation."""
 
-from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
 import contextlib
+import shutil
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Union, cast
 
 import dask.array as da
 import numpy as np
@@ -18,6 +19,7 @@ from .schema_models import (
     Omero,
     OMEZarrImageMetadata,
     ScaleTransformation,
+    TranslationTransformation,
 )
 
 
@@ -97,8 +99,7 @@ class OmeZarrImage:
         # Store OMERO metadata
         self.omero_metadata = omero_metadata
 
-        # Backend selection is stored and applied only during writes to avoid
-        # polluting the process-wide zarr.config
+        # Backend selection
         self.zarr_backend = zarr_backend
 
     @property
@@ -114,7 +115,6 @@ class OmeZarrImage:
     @property
     def downscale_method(self) -> Literal["gaussian", "nearest"]:
         """Get the downscale method from the downscaler."""
-        from typing import cast
 
         return cast(Literal["gaussian", "nearest"], self.downscaler.downscale_method)
 
@@ -373,7 +373,6 @@ class OmeZarrImage:
                 from zarr.codecs (e.g., BloscCodec, GzipCodec, ZstdCodec) or a single
                 compressor. If None, zarr will use default compression.
         """
-        import shutil
 
         # Remove existing file if overwrite is True
         if self.overwrite and self.path.exists():
@@ -384,6 +383,8 @@ class OmeZarrImage:
 
         backend_cfg = self._backend_config()
 
+        # Use context manager to apply backend-specific zarr config.
+        # This will avoid mutating global zarr.config state.
         with self._zarr_config_context(backend_cfg):
             # Create the root zarr group
             root_group = zarr.create_group(
@@ -391,7 +392,7 @@ class OmeZarrImage:
             )
 
             # Generate downscaled arrays
-            arrays = self._create_downscaled_arrays()
+            arrays: List[da.Array] = self._create_downscaled_arrays()
 
             # Generate coordinate transformations for each level
             level_transformations = self._create_coordinate_transformations_for_levels()
@@ -399,16 +400,12 @@ class OmeZarrImage:
             # Create datasets for each resolution level
             datasets = []
             for level, array in enumerate(arrays):
-                # Convert dask array to numpy for zarr storage
-                array_data: np.ndarray = np.asarray(
-                    array.compute() if hasattr(array, "compute") else array
-                )
 
-                # Prepare zarr array creation arguments
+                # Prepare args for zarr.create_array
                 zarr_kwargs = {
                     "name": str(level),
-                    "shape": array_data.shape,
-                    "dtype": array_data.dtype,
+                    "shape": array.shape,
+                    "dtype": array.dtype,
                 }
 
                 if chunks is not None:
@@ -421,8 +418,12 @@ class OmeZarrImage:
                     zarr_kwargs["compressors"] = compressors
 
                 # Create zarr array for this level and store the data
-                zarr_array = root_group.create_array(**zarr_kwargs)  # type: ignore
-                zarr_array[:] = array_data
+                # zarr_array = root_group.create_array(**zarr_kwargs)
+                # zarr_array[:] = array.compute()
+                array.to_zarr(
+                    url=root_group.store,
+                    overwrite=self.overwrite,
+                    zarr_array_kwargs=zarr_kwargs)
 
                 # Get coordinate transformations for this level
                 if level_transformations and level < len(level_transformations):
@@ -432,10 +433,6 @@ class OmeZarrImage:
                     transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
 
                 # Create dataset metadata
-                from typing import cast
-
-                from .schema_models import TranslationTransformation
-
                 dataset = Dataset(
                     path=str(level),
                     coordinateTransformations=cast(
@@ -486,7 +483,7 @@ class OmeZarrImage:
             },
         }
 
-    def _zarr_config_context(self, cfg: Optional[Dict[str, Any]]):
+    def _zarr_config_context(self, cfg: Optional[Dict[str, Any]]) -> Any:
         """Context manager that applies backend config without leaking globally."""
         if cfg is None:
             return contextlib.nullcontext()

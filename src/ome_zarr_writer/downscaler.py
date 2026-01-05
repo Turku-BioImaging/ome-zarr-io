@@ -115,24 +115,27 @@ class Downscaler:
 
         arrays = [image]  # Level 0: original resolution
 
-        for _ in range(1, validated_levels + 1):
+        for i in range(1, validated_levels + 1):
+            scale_factor = 1 / (self.downscale_factor * i)
+
             # Check if Y or X dimensions are too small to downscale further
-            if (
-                arrays[-1].shape[-2] / self.downscale_factor < 1
-                or arrays[-1].shape[-1] / self.downscale_factor < 1
-            ):
+            if image.shape[-2] * scale_factor < 1 or image.shape[-1] * scale_factor < 1:
                 break
 
-            downscaled: da.Array = (
-                self._downscale_gaussian(arrays[-1])
-                if self.downscale_method == "gaussian"
-                else self._downscale_nearest(arrays[-1])
+            # Get the downscaled array
+            downscaled: da.Array = self._downscale_gaussian(
+                image, scale_factor=scale_factor
+            ) if self.downscale_method == "gaussian" else self._downscale_nearest(
+                image, scale_factor=scale_factor
             )
+
             arrays.append(downscaled)
 
         return arrays
 
-    def __rescale_yx_block(self, block: np.ndarray, order: int) -> np.ndarray:
+    def __rescale_yx_block(
+        self, block: np.ndarray, order: int, scale_factor: float
+    ) -> np.ndarray:
         """
         Rescale only the last two dimensions of a block by the downscale factor.
         Parameter `order` is the order of interpolation. 0 = nearest-neighbor,
@@ -140,7 +143,6 @@ class Downscaler:
         """
         # Create scale factors: 1 for all dimensions except last two
         scale_factors = [1.0] * block.ndim
-        scale_factor = 1.0 / self.downscale_factor
         scale_factors[-2] = scale_factor  # Y dimension
         scale_factors[-1] = scale_factor  # X dimension
 
@@ -157,7 +159,8 @@ class Downscaler:
 
     def _downscale_gaussian(
         self,
-        current_array: da.Array,
+        original_array: da.Array,
+        scale_factor: float,
     ) -> da.Array:
         """Apply Gaussian filtering followed by downscaling.
 
@@ -170,19 +173,19 @@ class Downscaler:
         """
         # Apply Gaussian filter before downscaling to prevent aliasing.
         # Use sigma=1 for Y and X dimensions. Other dimensions have sigma=0 (no filtering).
-        sigma = [0.0] * current_array.ndim
-        sigma[-2] = 0.25
-        sigma[-1] = 0.25
+        sigma = [0.0] * original_array.ndim
+        sigma[-2] = 1
+        sigma[-1] = 1
 
         filtered_array = dask_image.ndfilters.gaussian_filter(
-            current_array, sigma=sigma, mode="nearest"
+            original_array, sigma=sigma, mode="nearest"
         )
 
         # Calculate new chunk sizes (also downscaled for Y and X dimensions)
         new_chunks = list(filtered_array.chunks)
         for dim in [-2, -1]:
             new_chunks[dim] = tuple(
-                max(1, int(chunk_size / self.downscale_factor))
+                max(1, int(chunk_size / (1 / scale_factor)))
                 for chunk_size in new_chunks[dim]
             )
 
@@ -195,11 +198,14 @@ class Downscaler:
             new_axis=None,
             meta=np.array([], dtype=filtered_array.dtype),
             order=1,  # use bicubic interpolation on Gaussian-filtered data
+            scale_factor=scale_factor,
         )
 
         return downscaled
 
-    def _downscale_nearest(self, current_array: da.Array) -> da.Array:
+    def _downscale_nearest(
+        self, original_array: da.Array, scale_factor: float
+    ) -> da.Array:
         """Apply nearest-neighbor downscaling.
 
         Args:
@@ -210,25 +216,23 @@ class Downscaler:
             Downscaled dask array.
         """
         # Calculate new chunk sizes (also downscaled for Y and X dimensions)
-        new_chunks = list(current_array.chunks)
-        new_chunks[-2] = tuple(
-            max(1, int(chunk_size / self.downscale_factor))
-            for chunk_size in new_chunks[-2]
-        )
-        new_chunks[-1] = tuple(
-            max(1, int(chunk_size / self.downscale_factor))
-            for chunk_size in new_chunks[-1]
-        )
+        new_chunks = list(original_array.chunks)
+        for dim in [-2, -1]:
+            new_chunks[dim] = tuple(
+                max(1, int(chunk_size / (1 / scale_factor)))
+                for chunk_size in new_chunks[dim]
+            )
 
         downscaled: da.Array = da.map_blocks(
             self.__rescale_yx_block,
-            current_array,
-            dtype=current_array.dtype,
+            original_array,
+            dtype=original_array.dtype,
             chunks=tuple(new_chunks),
             drop_axis=None,
             new_axis=None,
-            meta=np.array([], dtype=current_array.dtype),
-            order=0,  # nearest-neighbor interpolation
+            meta=np.array([], dtype=original_array.dtype),
+            order=0,  # nearest-neighbor interpolation,
+            scale_factor=scale_factor,
         )
 
         return downscaled

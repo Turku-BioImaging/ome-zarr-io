@@ -36,7 +36,7 @@ class TestDownscaler:
             downscale_method="gaussian",
             downscale_levels=3
         )
-        
+
         assert downscaler.downscale_factor == 2.0
         assert downscaler.downscale_method == "gaussian"
         assert downscaler.downscale_levels == 3
@@ -50,7 +50,7 @@ class TestDownscaler:
         """Test validate_downscale_levels with valid input."""
         downscaler = Downscaler(downscale_levels=3)
         image_shape = (100, 100)
-        
+
         validated_levels = downscaler.validate_downscale_levels(image_shape)
         assert validated_levels == 3
 
@@ -58,17 +58,17 @@ class TestDownscaler:
         """Test validate_downscale_levels with too many levels."""
         downscaler = Downscaler(downscale_levels=10)
         image_shape = (16, 16)  # Small image that can't support 10 levels
-        
+
         with pytest.warns(UserWarning):
             validated_levels = downscaler.validate_downscale_levels(image_shape)
-            
+
         assert validated_levels < 10
 
     def test_validate_downscale_levels_none(self):
         """Test validate_downscale_levels with None levels."""
         downscaler = Downscaler(downscale_levels=None)
         image_shape = (100, 100)
-        
+
         validated_levels = downscaler.validate_downscale_levels(image_shape)
         assert validated_levels == 0
 
@@ -76,9 +76,9 @@ class TestDownscaler:
         """Test create_downscaled_arrays with no downscaling."""
         image = da.ones((50, 50), dtype=np.uint8)
         downscaler = Downscaler(downscale_levels=0)
-        
+
         arrays = downscaler.create_downscaled_arrays(image)
-        
+
         assert len(arrays) == 1
         assert arrays[0].shape == (50, 50)
 
@@ -91,9 +91,9 @@ class TestDownscaler:
             downscale_method=method,
             downscale_levels=2
         )
-        
+
         arrays = downscaler.create_downscaled_arrays(image)
-        
+
         assert len(arrays) == 3  # Original + 2 downscaled
         assert arrays[0].shape == (100, 100)
         assert arrays[1].shape == (50, 50)
@@ -107,9 +107,9 @@ class TestDownscaler:
             downscale_method="invalid",  # type: ignore[arg-type]  # Should default to gaussian
             downscale_levels=1
         )
-        
+
         arrays = downscaler.create_downscaled_arrays(image)
-        
+
         assert len(arrays) == 2  # Should still work
         assert arrays[0].shape == (100, 100)
         assert arrays[1].shape == (50, 50)
@@ -117,18 +117,18 @@ class TestDownscaler:
     def test_create_coordinate_transformations_for_levels(self):
         """Test coordinate transformation creation."""
         downscaler = Downscaler(downscale_factor=2.0)
-        
+
         # Create original transformations
         original_transforms = [ScaleTransformation(scale=[0.1, 0.1])]
         image_shape = (100, 100)
         num_levels = 3
-        
+
         level_transforms = downscaler.create_coordinate_transformations_for_levels(
             original_transforms, image_shape, num_levels
         )
-        
+
         assert len(level_transforms) == 3
-        
+
         # Check scale values
         assert level_transforms[0][0].scale == [0.1, 0.1]  # Level 0
         assert level_transforms[1][0].scale == [0.2, 0.2]  # Level 1 (2x)
@@ -137,11 +137,11 @@ class TestDownscaler:
     def test_create_coordinate_transformations_none_input(self):
         """Test coordinate transformation creation with None input."""
         downscaler = Downscaler()
-        
+
         level_transforms = downscaler.create_coordinate_transformations_for_levels(
             None, (100, 100), 3
         )
-        
+
         assert level_transforms == []
 
     def test_multidimensional_image_downscaling(self):
@@ -153,9 +153,9 @@ class TestDownscaler:
             downscale_method="gaussian",
             downscale_levels=2
         )
-        
+
         arrays = downscaler.create_downscaled_arrays(image)
-        
+
         assert len(arrays) == 3
         # Time and channel dimensions should be preserved
         assert arrays[0].shape == (5, 3, 100, 100)
@@ -195,12 +195,13 @@ class TestOmeZarrImageDownscaling:
         ome_arrays = writer._create_downscaled_arrays()
 
         # Test specific expected shapes for our test case with factor 1.5
+        # New implementation: each level is scaled from original by (1 / (factor * level))
         expected_shapes = [
-            (60, 60),  # Original
-            (40, 40),  # 60/1.5 = 40
-            (26, 26),  # 40/1.5 ≈ 26
-            (17, 17),  # 26/1.5 ≈ 17
-            (11, 11),  # 17/1.5 ≈ 11
+            (60, 60),  # Original (level 0)
+            (40, 40),  # 60 * (1/(1.5*1)) = 60 * 0.667 = 40
+            (20, 20),  # 60 * (1/(1.5*2)) = 60 * 0.333 = 20
+            (13, 13),  # 60 * (1/(1.5*3)) = 60 * 0.222 ≈ 13
+            (10, 10),  # 60 * (1/(1.5*4)) = 60 * 0.167 = 10
         ]
 
         for level in range(min(len(ome_arrays), len(expected_shapes))):

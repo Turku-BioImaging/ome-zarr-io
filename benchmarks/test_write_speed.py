@@ -27,7 +27,7 @@ image = OmeZarrImage(
     dims=dims,
     axis_units=axis_units,
     scale_transformations=scale_transformations,
-    downscale_levels=None,
+    downscale_levels=4,
     zarr_backend="zarrs",
     overwrite=True,
 )
@@ -53,7 +53,7 @@ image = OmeZarrImage(
     dims=dims,
     axis_units=axis_units,
     scale_transformations=scale_transformations,
-    downscale_levels=None,
+    downscale_levels=4,
     zarr_backend="zarr-python",
     overwrite=True,
 )

@@ -163,8 +163,8 @@ def test_multichannel_image_dims(temp_dir):
     assert channel_axis.unit is None
 
 
-def test_zarr_backend_default(temp_dir, sample_2d_image):
-    """Default zarr_backend is 'zarrs' but should not mutate global config."""
+def test_write_without_zarr_backend(temp_dir, sample_2d_image):
+    """Test that write works without zarr_backend parameter."""
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
@@ -174,7 +174,6 @@ def test_zarr_backend_default(temp_dir, sample_2d_image):
     )
 
     baseline = copy.deepcopy(zarr.config.get("codec_pipeline"))
-    assert writer.zarr_backend == "zarrs"
 
     writer.write()
 
@@ -182,8 +181,8 @@ def test_zarr_backend_default(temp_dir, sample_2d_image):
     assert zarr.config.get("codec_pipeline") == baseline
 
 
-def test_zarr_backend_zarrs_explicit(temp_dir, sample_2d_image):
-    """Explicit zarrs backend uses scoped config and leaves globals untouched."""
+def test_write_preserves_zarr_config(temp_dir, sample_2d_image):
+    """Test that write operation preserves zarr global configuration."""
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
@@ -193,10 +192,7 @@ def test_zarr_backend_zarrs_explicit(temp_dir, sample_2d_image):
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        zarr_backend="zarrs",
     )
-
-    assert writer.zarr_backend == "zarrs"
 
     baseline = copy.deepcopy(zarr.config.get("codec_pipeline"))
     writer.write()
@@ -204,8 +200,8 @@ def test_zarr_backend_zarrs_explicit(temp_dir, sample_2d_image):
     assert zarr.config.get("codec_pipeline") == baseline
 
 
-def test_zarr_backend_zarr_python(temp_dir, sample_2d_image):
-    """Zarr-python backend should leave existing config as-is."""
+def test_write_leaves_zarr_config_intact(temp_dir, sample_2d_image):
+    """Test that write operation leaves zarr configuration intact."""
     path = temp_dir / "test.zarr"
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
@@ -215,10 +211,8 @@ def test_zarr_backend_zarr_python(temp_dir, sample_2d_image):
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        zarr_backend="zarr-python",
     )
 
-    assert writer.zarr_backend == "zarr-python"
     baseline = copy.deepcopy(zarr.config.get("codec_pipeline"))
 
     writer.write()
@@ -226,8 +220,8 @@ def test_zarr_backend_zarr_python(temp_dir, sample_2d_image):
     assert zarr.config.get("codec_pipeline") == baseline
 
 
-def test_zarr_config_isolation(temp_dir, sample_2d_image):
-    """Ensure backend-specific config is scoped per write and does not leak."""
+def test_multiple_writes_preserve_config(temp_dir, sample_2d_image):
+    """Ensure multiple write operations preserve zarr configuration."""
     path1 = temp_dir / "test1.zarr"
     path2 = temp_dir / "test2.zarr"
     dims = ["y", "x"]
@@ -240,7 +234,6 @@ def test_zarr_config_isolation(temp_dir, sample_2d_image):
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        zarr_backend="zarrs",
     )
     writer1.write()
     assert zarr.config.get("codec_pipeline") == baseline
@@ -250,7 +243,6 @@ def test_zarr_config_isolation(temp_dir, sample_2d_image):
         image=sample_2d_image,
         dims=dims,
         axis_units=axis_units,
-        zarr_backend="zarr-python",
     )
     writer2.write()
     assert zarr.config.get("codec_pipeline") == baseline

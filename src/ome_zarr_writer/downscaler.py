@@ -190,10 +190,11 @@ class Downscaler:
         )
 
         # Calculate new chunk sizes (also downscaled for Y and X dimensions)
+        # Use round() to match how rescale calculates output shape
         new_chunks = list(filtered_array.chunks)
         for dim in [-2, -1]:
             new_chunks[dim] = tuple(
-                max(1, int(chunk_size / (1 / scale_factor)))
+                max(1, round(chunk_size * scale_factor))
                 for chunk_size in new_chunks[dim]
             )
 
@@ -224,10 +225,11 @@ class Downscaler:
             Downscaled dask array using nearest-neighbor interpolation.
         """
         # Calculate new chunk sizes (also downscaled for Y and X dimensions)
+        # Use round() to match how rescale calculates output shape
         new_chunks = list(original_array.chunks)
         for dim in [-2, -1]:
             new_chunks[dim] = tuple(
-                max(1, int(chunk_size / (1 / scale_factor)))
+                max(1, round(chunk_size * scale_factor))
                 for chunk_size in new_chunks[dim]
             )
 

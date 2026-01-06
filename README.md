@@ -16,7 +16,6 @@ A Python package for writing valid OME-Zarr 0.5 multiscale images. This library 
 - Strict TCZYX dimension ordering
 - Space and time axis axis unit validation
 - Two downscaling methods: Gaussian filtering (default) and nearest-neighbor interpolation
-- Uses Rust zarrs-python as the default backend.
 
 
 ## Installation
@@ -50,17 +49,6 @@ pip install -r requirements.txt
 - **Best for:** Label/segmentation images with discrete values
 - **Method:** Preserves exact pixel values during downscaling
 - **Use case:** Segmentation masks, label images where each value represents a distinct object/region
-
-## Benchmarks
-The Rust-library `zarrs-python` is used as a backend as it offers significantly faster I/O performance
-compared to the vanilla `zarr-python`. The table below shows write times on a 16-core AMD Ryzen 9 7940HS 32GB RAM.
-See `./benchmarks/test_write_speed.py` for more details.
-
-| Backend | Elapsed Time |
-|---------|-------------|
-| Rust    | 1.82 seconds |
-| Python  | 18.16 seconds |
-
 
 ## Quick Start
 

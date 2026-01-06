@@ -1,75 +1,57 @@
 """
-Benchmark writing to OME-Zarr using zarr-python vs. Rust zarrs backend.
+Benchmark writing to OME-Zarr using dask arrays and the zarr-python backend.
 """
 
 import shutil
 from time import time
 
+import dask.array as da
 import numpy as np
 import zarr
 import zarr.codecs
 
 from ome_zarr_writer import OmeZarrImage
 
-np.random.seed(88971)
+if __name__ == "__main__":
 
-# Declare 3D array.
-# Benchmark writing using both zarrs (Rust) and zarr-python backends.
-array = np.random.randint(0, 65535, size=(300, 2048, 2048), dtype=np.uint16)
-dims = ["z", "y", "x"]
-axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
+    np.random.seed(88971)
 
-scale_transformations = {"z": 0.325, "y": 0.15, "x": 0.15}
+    # Declare 3D array.
+    # Benchmark writing using both zarrs (Rust) and zarr-python backends.
+    array = np.random.randint(0, 65535, size=(300, 2048, 2048), dtype=np.uint16)
+    array = da.from_array(array, chunks=(20, 256, 256))  # type: ignore
+    print(
+        array.chunksize,
+        f"Chunk size in MB: {array.chunksize[0] * array.chunksize[1] * array.chunksize[2] * array.dtype.itemsize / (1024 * 1024):.2f}",
+    )
 
-image = OmeZarrImage(
-    path="benchmark.ome.zarr",
-    image=array,
-    dims=dims,
-    axis_units=axis_units,
-    scale_transformations=scale_transformations,
-    downscale_levels=4,
-    zarr_backend="zarrs",
-    overwrite=True,
-)
+    dims = ["z", "y", "x"]
+    axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
-start_time = time()
-image.write(
-    chunks=(1, 128, 128),
-    shards=(10, 1024, 1024),
-    compressors=[
-        zarr.codecs.BloscCodec(
-            cname="zstd", clevel=5, shuffle=zarr.codecs.BloscShuffle.bitshuffle
-        )
-    ],
-)
+    scale_transformations = {"z": 0.325, "y": 0.15, "x": 0.15}
 
-end_time = time()
-print(f"Rust - Elapsed time: {end_time - start_time:.2f} seconds")
+    image = OmeZarrImage(
+        path="benchmark.ome.zarr",
+        image=array,
+        dims=dims,
+        axis_units=axis_units,
+        scale_transformations=scale_transformations,
+        downscale_levels=4,
+        overwrite=True,
+    )
 
+    start_time = time()
+    image.write(
+        chunks=(20, 256, 256),
+        shards=(40, 1024, 1024),
+        compressors=[
+            zarr.codecs.BloscCodec(
+                cname="zstd", clevel=5, shuffle=zarr.codecs.BloscShuffle.bitshuffle
+            )
+        ],
+    )
 
-image = OmeZarrImage(
-    path="benchmark.ome.zarr",
-    image=array,
-    dims=dims,
-    axis_units=axis_units,
-    scale_transformations=scale_transformations,
-    downscale_levels=4,
-    zarr_backend="zarr-python",
-    overwrite=True,
-)
+    end_time = time()
+    print(f"Python - Elapsed time: {end_time - start_time:.2f} seconds")
 
-start_time = time()
-image.write(
-    chunks=(1, 128, 128),
-    shards=(10, 1024, 1024),
-    compressors=[
-        zarr.codecs.BloscCodec(
-            cname="zstd", clevel=5, shuffle=zarr.codecs.BloscShuffle.bitshuffle
-        )
-    ],
-)
-
-end_time = time()
-print(f"Python - Elapsed time: {end_time - start_time:.2f} seconds")
-
-shutil.rmtree("benchmark.ome.zarr")
+    shutil.rmtree("benchmark.ome.zarr")

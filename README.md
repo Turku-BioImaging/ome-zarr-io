@@ -3,9 +3,12 @@
 Write valid OME-Zarr 0.5 multiscale images
 
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml)
-[![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+[![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)  
 
-A Python package for writing valid OME-Zarr 0.5 multiscale images. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format.
+
+A Python package for writing valid OME-Zarr 0.5 multiscale images using NumPy and Dask. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format. 
+
+![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask&theme=dark)
 
 ## Features
 
@@ -37,18 +40,6 @@ git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
 # Then install with pip
 pip install -r requirements.txt
 ```
-
-## Downscaling Methods
-
-### Gaussian Filtering (Default)
-- **Best for:** Intensity images (fluorescence, brightfield, etc.)
-- **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
-- **Use case:** Most microscopy images where preserving smooth intensity variations is important
-
-### Nearest-Neighbor Interpolation
-- **Best for:** Label/segmentation images with discrete values
-- **Method:** Preserves exact pixel values during downscaling
-- **Use case:** Segmentation masks, label images where each value represents a distinct object/region
 
 ## Quick Start
 
@@ -140,8 +131,18 @@ ome_zarr_image.write(
     compressors=compressors
 )
 
-print("✅ Successfully created advanced.ome.zarr with optimized storage")
 ```
+## Downscaling Methods
+
+### Gaussian Filtering (Default)
+- **Best for:** Intensity images (fluorescence, brightfield, etc.)
+- **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
+- **Use case:** Most microscopy images where preserving smooth intensity variations is important
+
+### Nearest-Neighbor Interpolation
+- **Best for:** Label/segmentation images with discrete values
+- **Method:** Preserves exact pixel values during downscaling
+- **Use case:** Segmentation masks, label images where each value represents a distinct object/region
 
 
 ### Valid Dimension Combinations

@@ -126,10 +126,10 @@ class Downscaler:
                 break
 
             # Get the downscaled array
-            downscaled: da.Array = self._downscale_gaussian(
-                image, scale_factor=scale_factor
-            ) if self.downscale_method == "gaussian" else self._downscale_nearest(
-                image, scale_factor=scale_factor
+            downscaled: da.Array = (
+                self._downscale_gaussian(image, scale_factor=scale_factor)
+                if self.downscale_method == "gaussian"
+                else self._downscale_nearest(image, scale_factor=scale_factor)
             )
 
             arrays.append(downscaled)
@@ -250,25 +250,23 @@ class Downscaler:
     def create_coordinate_transformations_for_levels(
         self,
         coordinate_transformations: Optional[List[ScaleTransformation]],
-        image_shape: tuple,
-        num_actual_levels: int,
     ) -> List[List[ScaleTransformation]]:
         """Create coordinate transformations for each downscale level.
 
         Takes the scale transformations provided for the original image and
         adjusts them appropriately for each downscale level. The spatial dimensions
-        (Y and X, which are the last two dimensions) are multiplied by the
-        downscale factor for each level.
+        (Y and X, which are the last two dimensions) are scaled by the cumulative
+        downscale factor for each level (downscale_factor^level).
 
         Args:
-            coordinate_transformations: Original coordinate transformations.
-            image_shape: Shape of the original image.
-            num_actual_levels: Number of actual resolution levels created.
+            coordinate_transformations: Original coordinate transformations for level 0.
+            If None, returns empty list.
 
         Returns:
             List of scale transformation lists, one for each resolution level.
-            The first list corresponds to the original image, subsequent lists
-            correspond to progressively downscaled levels.
+            The first list corresponds to the original image (level 0), subsequent
+            lists correspond to progressively downscaled levels. Returns empty list
+            if coordinate_transformations is None.
         """
         if coordinate_transformations is None:
             return []
@@ -276,7 +274,9 @@ class Downscaler:
         # Create coordinate transformations for each level
         all_transformations = []
 
-        for level in range(num_actual_levels):
+        num_downscale_levels = self.downscale_levels or 0
+
+        for level in range(num_downscale_levels + 1):
             level_transformations = []
 
             for transform in coordinate_transformations:
@@ -285,7 +285,7 @@ class Downscaler:
 
                 # The last two dimensions are always Y, X in our schema
                 # Multiply by downscale_factor^level for these dimensions
-                scale_factor = self.downscale_factor**level
+                scale_factor = self.downscale_factor ** level
                 new_scale[-2] *= scale_factor  # Y dimension
                 new_scale[-1] *= scale_factor  # X dimension
 

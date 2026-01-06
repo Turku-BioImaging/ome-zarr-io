@@ -161,7 +161,7 @@ class CoordinateTransformation:
 class ScaleTransformation(CoordinateTransformation):
     """Scale coordinate transformation."""
 
-    scale: List[float]
+    scale: list[float]
     type: str = field(default="scale", init=False)
 
     def __post_init__(self):
@@ -169,7 +169,7 @@ class ScaleTransformation(CoordinateTransformation):
         if len(self.scale) < 2:
             raise ValueError("Scale array must have at least 2 elements")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {"type": self.type, "scale": self.scale}
 
@@ -178,7 +178,7 @@ class ScaleTransformation(CoordinateTransformation):
 class TranslationTransformation(CoordinateTransformation):
     """Translation coordinate transformation."""
 
-    translation: List[float]
+    translation: list[float]
     type: str = field(default="translation", init=False)
 
     def __post_init__(self):

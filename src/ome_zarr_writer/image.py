@@ -137,12 +137,9 @@ class OmeZarrImage:
         Returns:
             List of scale transformation lists, one for each resolution level.
         """
-        # First, get the actual arrays that will be created to determine num_levels
-        arrays = self._create_downscaled_arrays()
-        num_levels = len(arrays)
 
         return self.downscaler.create_coordinate_transformations_for_levels(
-            self.coordinate_transformations, self.image.shape, num_levels
+            self.coordinate_transformations
         )
 
     def _process_axis_units(

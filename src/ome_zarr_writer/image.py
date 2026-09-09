@@ -342,6 +342,179 @@ class OmeZarrImage:
 
         return [ScaleTransformation(scale=scale)]
 
+    def add_labels(
+        self,
+        name: str,
+        array: Union[da.Array, np.ndarray],
+        colors: Optional[List[Dict[str, Any]]] = None,
+        properties: Optional[List[Dict[str, Any]]] = None,
+        source_image: str = "../../",
+        overwrite: bool = False,
+        downscale_method: Optional[Literal["gaussian", "nearest"]] = "nearest",
+        downscale_levels: Optional[int] = None,
+        downscale_factor: Optional[float] = None,
+        chunks: Optional[Union[int, tuple, str]] = None,
+        shards: Optional[Union[int, tuple]] = None,
+        compressors: Optional[CompressorsLike] = None,
+    ) -> zarr.Group:
+        """Attach a label image to an existing OME-Zarr image group.
+
+        This creates the NGFF 0.5 structure expected for labeled segmentation masks:
+        - parent image group: ome.labels = ["<name>"]
+        - labels/<name>/zarr.json: ome.multiscales + ome.image-label metadata
+        - label image arrays written as a multiscale pyramid
+
+        See `https://ngff.openmicroscopy.org/specifications/0.5/index.html#labels-metadata` for details.
+
+        Args:
+            name: Name of the label image as it will appear under the parent labels group.
+            array: Label array to attach. Should match the source image shape.
+            colors: Optional list of {"label-value": ..., "rgba": [...]} entries.
+            properties: Optional list of label metadata entries.
+            source_image: Relative path from the label image group to the source image group.
+            overwrite: If True, overwrite an existing label image with the same name.
+            downscale_method: Label images should typically use nearest-neighbor downsampling.
+            downscale_levels: Optional override for number of label pyramid levels.
+            downscale_factor: Optional override for the label downscaling factor.
+            chunks: Chunk specification for label arrays.
+            shards: Optional sharding settings.
+            compressors: Optional compressor configuration.
+
+        Returns:
+            The newly created label group.
+        """
+        if not self.path.exists():
+            raise ValueError(
+                f"Cannot add labels to image at '{self.path}' because the image group does not exist. "
+                "Write the image first with .write()."
+            )
+
+        if not isinstance(array, (np.ndarray, da.Array)):
+            raise TypeError(
+                f"array must be a numpy array or dask array, got {type(array)}"
+            )
+
+        label_array = (
+            da.from_array(array, chunks="auto")
+            if isinstance(array, np.ndarray)
+            else array
+        )
+        if label_array.ndim != len(self.dims):
+            raise ValueError(
+                f"Label array dimensions ({label_array.ndim}) do not match source image dimensions ({len(self.dims)})"
+            )
+
+        if label_array.shape != self.image.shape:
+            raise ValueError(
+                f"Label array shape {label_array.shape} does not match source image shape {self.image.shape}"
+            )
+
+        root_group = zarr.open_group(str(self.path), mode="a")
+
+        labels_group = root_group.require_group("labels")
+        labels_group_ome_attrs = dict(labels_group.attrs.get("ome", {})) # type: ignore
+        labels = labels_group_ome_attrs.get("labels", []) # type: ignore
+        if name in labels and not overwrite:
+            raise ValueError(f"Label '{name}' already exists in this image group")
+
+        if overwrite and name in labels_group.group_keys():
+            del labels_group[name]
+
+        label_group = labels_group.require_group(name)
+
+        scaler = Downscaler(
+            downscale_factor=(
+                downscale_factor
+                if downscale_factor is not None
+                else self.downscale_factor
+            ),
+            downscale_method=(
+                downscale_method if downscale_method is not None else "nearest"
+            ),
+            downscale_levels=(
+                downscale_levels
+                if downscale_levels is not None
+                else (self.downscale_levels or 0)
+            ),
+        )
+        label_arrays = scaler.create_downscaled_arrays(da.asarray(label_array))
+
+        label_level_transformations = (
+            self._create_coordinate_transformations_for_levels()
+        )
+        if not label_level_transformations:
+            label_level_transformations = [
+                [ScaleTransformation(scale=[1.0] * len(self.dims))]
+                for _ in range(len(label_arrays))
+            ]
+
+        datasets = []
+        for level, level_array in enumerate(label_arrays):
+            zarr_kwargs = {
+                "name": str(level),
+                "shape": level_array.shape,
+                "dtype": level_array.dtype,
+            }
+            if chunks is not None:
+                zarr_kwargs["chunks"] = chunks
+            if shards is not None:
+                zarr_kwargs["shards"] = shards
+            if compressors is not None:
+                zarr_kwargs["compressors"] = compressors
+
+            zarr_array = label_group.create_array(**zarr_kwargs)
+            zarr_array[:] = level_array  # type: ignore
+
+            if level < len(label_level_transformations):
+                transformations = label_level_transformations[level]
+            else:
+                transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
+
+            dataset = Dataset(
+                path=str(level),
+                coordinateTransformations=cast(
+                    List[Union[ScaleTransformation, TranslationTransformation]],
+                    transformations,
+                ),
+            )
+            datasets.append(dataset)
+
+        multiscale = Multiscale(
+            datasets=datasets,
+            axes=self.axes,
+            name=name,
+        )
+
+        image_label = {
+            "version": "0.5",
+            "source": {"image": source_image},
+        }
+        if colors is not None:
+            image_label["colors"] = colors
+        if properties is not None:
+            image_label["properties"] = properties
+
+        label_group.attrs.update(
+            {
+                "ome": {
+                    "version": "0.5",
+                    "multiscales": [multiscale.to_dict()],
+                    "image-label": image_label,
+                }
+            }
+        )
+
+        if name not in labels:
+            labels.append(name)
+
+        labels_group_ome_attrs["labels"] = labels # type: ignore
+        labels_group.attrs["ome"] = {       # type: ignore
+            **labels_group_ome_attrs,
+            "version": "0.5",
+        }
+
+        return label_group
+
     def write(
         self,
         chunks: Optional[Union[int, tuple, str]] = None,
@@ -406,7 +579,7 @@ class OmeZarrImage:
 
             # Create zarr array for this level and store the data
             zarr_array = root_group.create_array(**zarr_kwargs)
-            zarr_array[:] = array # type: ignore
+            zarr_array[:] = array  # type: ignore
 
             # Get coordinate transformations for this level
             if level_transformations and level < len(level_transformations):

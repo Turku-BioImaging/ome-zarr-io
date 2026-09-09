@@ -3,23 +3,11 @@
 Write valid OME-Zarr 0.5 multiscale images
 
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml)
-[![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)  
+[![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 
-
-A Python package for writing valid OME-Zarr 0.5 multiscale images using NumPy and Dask. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format. 
+A Python package for writing valid OME-Zarr 0.5 multiscale images using NumPy and Dask. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format.
 
 ![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask&theme=dark)
-
-## Features
-
-- Write OME-Zarr 0.5 compliant multiscale images
-- Integration with Zarr version 3.
-- Type-safe Python dataclasses implementing the OME-Zarr schema
-- JSON Schema validation for metadata compliance
-- Strict TCZYX dimension ordering
-- Space and time axis axis unit validation
-- Two downscaling methods: Gaussian filtering (default) and nearest-neighbor interpolation
-
 
 ## Installation
 
@@ -132,6 +120,43 @@ ome_zarr_image.write(
 )
 
 ```
+
+### Adding labels to an existing image
+
+```python
+import numpy as np
+from ome_zarr_writer import OmeZarrImage
+
+image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint8)
+label_mask = np.zeros_like(image, dtype=np.uint8)
+label_mask[100:200, 100:200] = 1
+
+writer = OmeZarrImage(
+    path="example_labels.ome.zarr",
+    image=image,
+    dims=["y", "x"],
+    axis_units={"y": "micrometer", "x": "micrometer"},
+    downscale_levels=2,
+    overwrite=True,
+)
+writer.write()
+
+writer.add_labels(
+    name="cell_space_segmentation",
+    array=label_mask,
+    colors=[
+        {"label-value": 0, "rgba": [0, 0, 128, 128]},
+        {"label-value": 1, "rgba": [0, 128, 0, 128]},
+    ],
+    properties=[
+        {"label-value": 0, "class": "intercellular space"},
+        {"label-value": 1, "class": "cell"},
+    ],
+)
+```
+
+This creates a nested `labels/cell_space_segmentation` group under the image and writes NGFF 0.5 label metadata in the parent `ome.labels` list and the label group's `ome.image-label` block. See [OME-Zarr 0.5 spec](https://ngff.openmicroscopy.org/specifications/0.5/index.html#labels-metadata) for more details.
+
 ## Downscaling Methods
 
 ### Gaussian Filtering (Default)
@@ -143,22 +168,6 @@ ome_zarr_image.write(
 - **Best for:** Label/segmentation images with discrete values
 - **Method:** Preserves exact pixel values during downscaling
 - **Use case:** Segmentation masks, label images where each value represents a distinct object/region
-
-
-### Valid Dimension Combinations
-
-All input images must follow the **TCZYX** order where T (time), C (channel), and Z are optional:
-
-| Dimensions | Order | Example Use Case | Input Shape Example |
-|------------|-------|------------------|-------------------|
-| **YX** | Y, X | 2D grayscale image | `(512, 512)` |
-| **ZYX** | Z, Y, X | 3D confocal stack | `(20, 256, 256)` |
-| **CYX** | C, Y, X | RGB/multichannel 2D | `(3, 512, 512)` |
-| **CZYX** | C, Z, Y, X | Multiscale 3D stack | `(2, 15, 256, 256)` |
-| **TYX** | T, Y, X | Time-lapse 2D | `(100, 256, 256)` |
-| **TZYX** | T, Z, Y, X | 4D live imaging | `(50, 10, 128, 128)` |
-| **TCYX** | T, C, Y, X | Time-lapse multichannel | `(50, 2, 128, 128)` |
-| **TCZYX** | T, C, Z, Y, X | 5D live cell imaging | `(20, 3, 8, 64, 64)` |
 
 
 ## Development

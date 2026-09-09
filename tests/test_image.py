@@ -112,6 +112,48 @@ def test_path_handling_string_input(sample_2d_image):
     assert str(writer.path) == path_str
 
 
+def test_add_labels_to_existing_image(temp_dir, sample_2d_image):
+    """Test that a label image can be attached to an existing image group."""
+    path = temp_dir / "test.zarr"
+    dims = ["y", "x"]
+    axis_units = {"y": "micrometer", "x": "micrometer"}
+
+    writer = OmeZarrImage(
+        path=path,
+        image=sample_2d_image,
+        dims=dims,
+        axis_units=axis_units,
+        downscale_levels=1,
+    )
+    writer.write(chunks=(32, 32))
+
+    label = np.zeros_like(sample_2d_image, dtype=np.uint8)
+    label[10:20, 10:20] = 1
+
+    writer.add_labels(
+        name="cell_space_segmentation",
+        array=label,
+        colors=[
+            {"label-value": 0, "rgba": [0, 0, 128, 128]},
+            {"label-value": 1, "rgba": [0, 128, 0, 128]},
+        ],
+        properties=[
+            {"label-value": 0, "class": "intercellular space"},
+            {"label-value": 1, "class": "cell"},
+        ],
+    )
+
+    root = zarr.open_group(str(path), mode="r")
+    assert "labels" in root
+    labels_group = root["labels"]
+    assert labels_group.attrs["ome"]["version"] == "0.5"
+    assert labels_group.attrs["ome"]["labels"] == ["cell_space_segmentation"]
+    label_group = labels_group["cell_space_segmentation"]
+    assert label_group.attrs["ome"]["image-label"]["version"] == "0.5"
+    assert label_group.attrs["ome"]["image-label"]["colors"][0]["label-value"] == 0
+    assert "multiscales" in label_group.attrs["ome"]
+
+
 def test_write_method_works(temp_dir, sample_2d_image):
     """Test that write method works (no longer raises NotImplementedError)."""
     path = temp_dir / "test.zarr"

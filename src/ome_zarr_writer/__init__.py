@@ -1,4 +1,4 @@
-"""OME-Zarr Writer package for writing valid OME-Zarr 0.5 multiscale images."""
+"""OME-Zarr package for reading and valid OME-Zarr 0.5 multiscale images."""
 
 __version__ = "0.1.0"
 __author__ = "Junel Solis, Turku BioImaging"
@@ -7,6 +7,7 @@ __email__ = "junel.solis@abo.fi"
 from .image import OmeZarrImage
 from .downscaler import Downscaler
 from .validator import OMEZarrValidator
+from .reader import Reader, PhysicalSize
 from .schema_models import (
     OMEZarrImageMetadata,
     OMEMetadata,
@@ -29,6 +30,8 @@ __all__ = [
     "OmeZarrImage",
     "Downscaler",
     "OMEZarrValidator",
+    "Reader",
+    "PhysicalSize",
     "OMEZarrImageMetadata",
     "OMEMetadata",
     "Multiscale",

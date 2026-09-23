@@ -138,7 +138,8 @@ class Reader:
         channel_index = self._channel_index(name)
 
         c_axis = self.dims.index("c")
-        array = self._open_level_array(self._root, level)
+        dataset_paths = [dataset.path for dataset in self._multiscale.datasets]
+        array = self._open_level_array(self._root, dataset_paths, level)
         index: List[Union[slice, int]] = [slice(None)] * array.ndim
         index[c_axis] = channel_index
         channel_array = array[tuple(index)]
@@ -177,7 +178,11 @@ class Reader:
             )
 
         label_group = self._root["labels"][name]  # type: ignore[index]
-        array = self._open_level_array(label_group, level)
+        # Label groups carry their own multiscales metadata; read the dataset
+        # paths from it rather than assuming they match the base image.
+        label_multiscale = label_group.attrs["ome"]["multiscales"][0]  # type: ignore[index]
+        dataset_paths = [dataset["path"] for dataset in label_multiscale["datasets"]]
+        array = self._open_level_array(label_group, dataset_paths, level)
 
         return array.compute() if as_type == "numpy" else array
 
@@ -243,7 +248,19 @@ class Reader:
 
     # -- Internal helpers ---------------------------------------------------
 
-    def _open_level_array(self, group: zarr.Group, level: int) -> da.Array:
-        """Open a resolution level as a lazy dask array."""
-        zarr_array = group[str(level)]
+    def _open_level_array(
+        self, group: zarr.Group, dataset_paths: List[str], level: int
+    ) -> da.Array:
+        """Open a resolution level as a lazy dask array.
+
+        Args:
+            group: Multiscale group containing the level arrays.
+            dataset_paths: `path` of each entry in the group's
+                `multiscales[0].datasets`, in level order.
+            level: Index into `dataset_paths` (negative values count from the end).
+
+        Raises:
+            IndexError: If `level` is out of range.
+        """
+        zarr_array = group[dataset_paths[level]]
         return da.from_array(zarr_array, chunks=zarr_array.chunks)  # type: ignore[union-attr]

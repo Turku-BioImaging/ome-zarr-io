@@ -55,6 +55,48 @@ def written_image_path(tmp_path, channel_image, label_array):
     return path
 
 
+def _write_fileset_with_paths(path, levels, dataset_paths):
+    """Write a (C, Y, X) OME-Zarr fileset whose level arrays use `dataset_paths`.
+
+    A matching `labels/nuclei` label image is written with the same paths.
+    """
+    import zarr
+
+    axes = [
+        Axis(name="c", type="channel"),
+        Axis(name="y", type="space", unit="micrometer"),
+        Axis(name="x", type="space", unit="micrometer"),
+    ]
+    datasets = [
+        Dataset(
+            path=dataset_path,
+            coordinateTransformations=[ScaleTransformation(scale=[1.0, 2.0**i, 2.0**i])],
+        )
+        for i, dataset_path in enumerate(dataset_paths)
+    ]
+    metadata = OMEZarrImageMetadata(
+        ome=OMEMetadata(
+            multiscales=[Multiscale(datasets=datasets, axes=axes)],
+            version="0.5",
+            omero=Omero(channels=[Channel(label="DAPI"), Channel(label="GFP")]),
+        )
+    )
+
+    root = zarr.create_group(str(path), zarr_format=3)
+    root.attrs.update(metadata.to_dict())
+    for dataset_path, level in zip(dataset_paths, levels):
+        root.create_array(name=dataset_path, shape=level.shape, dtype=level.dtype)[:] = level
+
+    labels = root.create_group("labels")
+    labels.attrs.update({"ome": {"version": "0.5", "labels": ["nuclei"]}})
+    label_group = labels.create_group("nuclei")
+    label_group.attrs.update(
+        {"ome": {**metadata.to_dict()["ome"], "image-label": {}}}
+    )
+    for dataset_path, level in zip(dataset_paths, levels):
+        label_group.create_array(name=dataset_path, shape=level.shape, dtype=level.dtype)[:] = level
+
+
 @pytest.fixture
 def reader(written_image_path):
     """A Reader opened on the fixture fileset."""
@@ -133,6 +175,32 @@ class TestChannels:
         with pytest.raises(ValueError):
             reader.get_channel("anything")
 
+    def test_get_channel_uses_dataset_path(self, tmp_path):
+        """Levels are located via `datasets[level].path`, not the level index."""
+        path = tmp_path / "custom_paths.zarr"
+        levels = [
+            np.random.randint(0, 255, size=(2, 20, 20), dtype=np.uint8),
+            np.random.randint(0, 255, size=(2, 10, 10), dtype=np.uint8),
+        ]
+        _write_fileset_with_paths(path, levels, ["s0", "s1"])
+
+        reader = Reader(path)
+        np.testing.assert_array_equal(
+            reader.get_channel("GFP", level=0, as_type="numpy"), levels[0][1]
+        )
+        np.testing.assert_array_equal(
+            reader.get_channel("DAPI", level=1, as_type="numpy"), levels[1][0]
+        )
+
+    def test_get_channel_negative_level(self, reader):
+        assert reader.get_channel("DAPI", level=-1).shape == reader.get_channel(
+            "DAPI", level=1
+        ).shape
+
+    def test_get_channel_level_out_of_range_raises(self, reader):
+        with pytest.raises(IndexError):
+            reader.get_channel("DAPI", level=99)
+
 
 class TestLabels:
     def test_label_names(self, reader):
@@ -151,6 +219,20 @@ class TestLabels:
     def test_get_label_unknown_raises_key_error(self, reader):
         with pytest.raises(KeyError):
             reader.get_label("does-not-exist")
+
+    def test_get_label_uses_dataset_path(self, tmp_path):
+        """Label levels are located via the label group's own `datasets[level].path`."""
+        path = tmp_path / "custom_label_paths.zarr"
+        levels = [
+            np.random.randint(0, 5, size=(2, 20, 20), dtype=np.uint8),
+            np.random.randint(0, 5, size=(2, 10, 10), dtype=np.uint8),
+        ]
+        _write_fileset_with_paths(path, levels, ["s0", "s1"])
+
+        reader = Reader(path)
+        np.testing.assert_array_equal(
+            reader.get_label("nuclei", level=1, as_type="numpy"), levels[1]
+        )
 
     def test_no_labels_returns_empty_list(self, tmp_path):
         path = tmp_path / "no_labels.zarr"

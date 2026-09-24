@@ -1,0 +1,17 @@
+# Mirrors pyproject.toml: [project].dependencies + [project.optional-dependencies].dev
+
+# Runtime dependencies
+dask
+dask-image
+jsonschema>=4.18.0
+numpy>=1.20.0
+scikit-image
+zarr>=3,<4
+
+# Development dependencies
+pytest>=6.0
+pytest-cov
+black
+flake8
+mypy
+pre-commit

@@ -1,55 +1,27 @@
-"""OME-Zarr package for reading and valid OME-Zarr 0.5 multiscale images."""
+"""OME-Zarr package for writing, reading, and validating OME-Zarr 0.5 multiscale images."""
 
-import importlib.metadata
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = importlib.metadata.version("ome-zarr-io")
+try:
+    __version__ = version("ome-zarr-io")
+except PackageNotFoundError:  # not installed, e.g. running from a source checkout
+    __version__ = "0.0.0+unknown"
 __author__ = "Junel Solis, Turku BioImaging"
 __email__ = "junel.solis@abo.fi"
 
-from mypy.typeshed.stdlib import importlib
-
-
 from .image import OmeZarrImage
-from .downscaler import Downscaler
 from .validator import OMEZarrValidator
 from .reader import Reader, PhysicalSize
-from .schema_models import (
-    OMEZarrImageMetadata,
-    OMEMetadata,
-    Multiscale,
-    Dataset,
-    Axis,
-    ScaleTransformation,
-    TranslationTransformation,
-    Channel,
-    Window,
-    Omero,
-    create_axes,  # Unified function for creating axes
-    create_scale_transformation,
-    validate_tczyx_axis_ordering,
-    VALID_TIME_UNITS,
-    VALID_SPACE_UNITS,
-)
+from .schema_models import Axis, Channel, Omero, Window, create_axes
 
 __all__ = [
     "OmeZarrImage",
-    "Downscaler",
     "OMEZarrValidator",
     "Reader",
     "PhysicalSize",
-    "OMEZarrImageMetadata",
-    "OMEMetadata",
-    "Multiscale",
-    "Dataset",
     "Axis",
-    "ScaleTransformation",
-    "TranslationTransformation",
     "Channel",
     "Window",
     "Omero",
-    "create_axes",  # Unified function for creating axes
-    "create_scale_transformation",
-    "validate_tczyx_axis_ordering",
-    "VALID_TIME_UNITS",
-    "VALID_SPACE_UNITS",
+    "create_axes",
 ]

@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ```python
 import numpy as np
 import zarr
-from ome_zarr_io import OmeZarrImage
+from ome_zarr_io import Writer
 
 # Create sample multichannel 3D confocal image data
 image = np.random.randint(0, 255, size=(2, 32, 512, 512), dtype=np.uint8)
@@ -59,7 +59,7 @@ scale_transformations = {
     "x": 0.15    # 0.15 μm pixel size in X
 }
 
-ome_zarr_image = OmeZarrImage(
+writer = Writer(
     path='example.ome.zarr',
     image=image,
     dims=dims,
@@ -74,7 +74,7 @@ ome_zarr_image = OmeZarrImage(
 # Optional: configure chunking, sharding, and compression for large datasets
 compressors = zarr.codecs.BloscCodec(cname="zstd", clevel=5, shuffle='bitshuffle')
 
-ome_zarr_image.write(
+writer.write(
     chunks=(1, 8, 256, 256),      # Optimize chunk size for access patterns
     shards=(2, 32, 512, 512),     # Group chunks into shards for efficiency
     compressors=compressors
@@ -86,13 +86,13 @@ ome_zarr_image.write(
 
 ```python
 import numpy as np
-from ome_zarr_io import OmeZarrImage
+from ome_zarr_io import Writer
 
 image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint8)
 label_mask = np.zeros_like(image, dtype=np.uint8)
 label_mask[100:200, 100:200] = 1
 
-writer = OmeZarrImage(
+writer = Writer(
     path="example_labels.ome.zarr",
     image=image,
     dims=["y", "x"],

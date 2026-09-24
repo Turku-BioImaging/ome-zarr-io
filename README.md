@@ -82,6 +82,23 @@ writer.write(
 
 ```
 
+#### Channels and display windows
+
+```python
+writer = Writer(
+    path="example.ome.zarr",
+    image=image,
+    dims=dims,
+    axis_units=axis_units,
+    channels={"DAPI": {"color": "0000FF", "window": (0, 200)}, "GFP": {}},
+    colors="random",  # distinct colors for channels without one; color_seed=... changes the palette
+)
+```
+
+Colors are hex without "#". Each window's `min`/`max` are the data's min/max; without `window`, `start`/`end`
+follow Fiji's auto-contrast (`"minmax"` uses the full range). `Omero(...)` objects are still accepted via
+`omero_metadata=`.
+
 ### Adding labels to an existing OME-Zarr 0.5 fileset
 
 ```python

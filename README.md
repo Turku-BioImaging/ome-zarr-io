@@ -1,4 +1,4 @@
-# ome-zarr-writer
+# ome-zarr-io
 
 Write valid OME-Zarr 0.5 multiscale images
 
@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ```python
 import numpy as np
 import zarr
-from ome_zarr_writer import OmeZarrImage
+from ome_zarr_io import OmeZarrImage
 
 # Create sample multichannel 3D confocal image data
 image = np.random.randint(0, 255, size=(2, 32, 512, 512), dtype=np.uint8)
@@ -86,7 +86,7 @@ ome_zarr_image.write(
 
 ```python
 import numpy as np
-from ome_zarr_writer import OmeZarrImage
+from ome_zarr_io import OmeZarrImage
 
 image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint8)
 label_mask = np.zeros_like(image, dtype=np.uint8)
@@ -123,7 +123,7 @@ This creates a nested `labels/cell_space_segmentation` group under the image and
 Use the `Reader` class to validate a fileset and retrieve channel or label data as NumPy/Dask arrays.
 
 ```python
-from ome_zarr_writer import Reader
+from ome_zarr_io import Reader
 
 reader = Reader("example.ome.zarr")
 

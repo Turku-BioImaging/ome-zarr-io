@@ -1,9 +1,9 @@
 #!/bin/bash
-# Development setup script for ome-zarr-writer
+# Development setup script for ome-zarr-io
 
 set -e
 
-echo "Setting up ome-zarr-writer development environment..."
+echo "Setting up ome-zarr-io development environment..."
 
 # Check if Python is available
 if ! command -v python3 &> /dev/null; then

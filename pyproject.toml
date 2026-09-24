@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ome-zarr-writer"
-version = "0.6.0"
+name = "ome-zarr-io"
+version = "0.7.0"
 description = "Write valid OME-Zarr 0.5 multiscale images"
 readme = "README.md"
 license = "MIT"
@@ -60,10 +60,10 @@ Documentation = "https://github.com/Turku-BioImaging/ome-zarr-writer#readme"
 "Bug Tracker" = "https://github.com/Turku-BioImaging/ome-zarr-writer/issues"
 
 [tool.setuptools]
-packages = ["ome_zarr_writer"]
+packages = ["ome_zarr_io"]
 
 [tool.setuptools.package-dir]
-ome_zarr_writer = "src/ome_zarr_writer"
+ome_zarr_io = "src/ome_zarr_io"
 
 [tool.black]
 line-length = 88

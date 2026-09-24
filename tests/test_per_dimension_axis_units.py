@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 import tempfile
 
-from ome_zarr_writer import OmeZarrImage
+from ome_zarr_io import OmeZarrImage
 
 
 class TestPerDimensionAxisUnits:

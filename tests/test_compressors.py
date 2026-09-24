@@ -6,7 +6,7 @@ from pathlib import Path
 import zarr
 from zarr.codecs import BloscCodec, GzipCodec, ZstdCodec
 
-from ome_zarr_writer import OmeZarrImage
+from ome_zarr_io import OmeZarrImage
 
 
 class TestCompressorsParameter:

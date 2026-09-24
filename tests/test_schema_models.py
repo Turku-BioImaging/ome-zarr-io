@@ -3,7 +3,7 @@ Tests for the OME-Zarr schema dataclasses.
 """
 
 import pytest
-from ome_zarr_writer.schema_models import (
+from ome_zarr_io.schema_models import (
     OMEZarrImageMetadata,
     OMEMetadata,
     Multiscale,

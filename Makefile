@@ -1,4 +1,4 @@
-# Makefile for ome-zarr-writer
+# Makefile for ome-zarr-io
 
 .PHONY: help install install-dev test test-cov lint format clean
 
@@ -16,7 +16,7 @@ test:  ## Run tests
 	pytest tests/ -v
 
 test-cov:  ## Run tests with coverage
-	pytest tests/ --cov=src/ome_zarr_writer --cov-report=term-missing --cov-report=html
+	pytest tests/ --cov=src/ome_zarr_io --cov-report=term-missing --cov-report=html
 
 test-fast:  ## Run tests excluding slow tests
 	pytest tests/ -v -m "not slow"

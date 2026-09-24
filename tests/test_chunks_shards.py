@@ -3,7 +3,7 @@
 import pytest
 import numpy as np
 import zarr
-from ome_zarr_writer.image import OmeZarrImage
+from ome_zarr_io.image import OmeZarrImage
 
 
 class TestChunksAndShardsAPI:

@@ -3,7 +3,7 @@ Tests for the unified create_axes function.
 """
 
 import pytest
-from ome_zarr_writer.schema_models import create_axes, validate_tczyx_axis_ordering
+from ome_zarr_io.schema_models import create_axes, validate_tczyx_axis_ordering
 
 
 class TestCreateAxes:
@@ -151,7 +151,7 @@ class TestCreateAxes:
 
     def test_create_axes_equivalent_to_specific_functions(self):
         """Test that create_axes produces same results as specific functions."""
-        from ome_zarr_writer.schema_models import (
+        from ome_zarr_io.schema_models import (
             create_yx_axes,
             create_zyx_axes,
             create_cyx_axes,

@@ -4,8 +4,8 @@ Tests for the OME-Zarr validator.
 
 import pytest
 from jsonschema.exceptions import ValidationError
-from ome_zarr_writer.validator import OMEZarrValidator
-from ome_zarr_writer.schema_models import (
+from ome_zarr_io.validator import OMEZarrValidator
+from ome_zarr_io.schema_models import (
     OMEZarrImageMetadata,
     OMEMetadata,
     Multiscale,

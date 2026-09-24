@@ -9,9 +9,9 @@ import numpy as np
 import dask.array as da
 import zarr
 from pathlib import Path
-from ome_zarr_writer.image import OmeZarrImage
-from ome_zarr_writer.downscaler import Downscaler
-from ome_zarr_writer.schema_models import ScaleTransformation
+from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.downscaler import Downscaler
+from ome_zarr_io.schema_models import ScaleTransformation
 
 
 @pytest.fixture

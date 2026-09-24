@@ -7,7 +7,7 @@ Write valid OME-Zarr 0.5 multiscale images
 
 A Python package for reading and writing OME-Zarr 0.5 multiscale images using NumPy and Dask. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format.
 
-![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask&theme=dark)
+![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask,pytest,githubactions&theme=dark)
 
 ## Installation
 
@@ -172,28 +172,32 @@ report.to_dict()            # JSON-serializable
 report.raise_if_invalid()   # raises jsonschema.exceptions.ValidationError
 ```
 
-Use `strict=True` for the stricter schemas. Remote `http(s)://` URLs need `aiohttp` and `requests`.
+Use `strict=True` for the stricter schemas.
+
+### Command line
+
+The same validation is available as a command (also `python -m ome_zarr_io ...`):
+
+```bash
+ome-zarr-io validate example.ome.zarr                  # human-readable summary
+ome-zarr-io validate example.ome.zarr --strict --quiet && echo ok
+```
+
+Exit status is `0` if valid, `1` if invalid, and `2` on a usage error or if the target cannot be read.
+Remote URLs need `pip install "ome-zarr-io[remote]"`.
 
 ## Downscaling Methods
 
-### Gaussian Filtering (Default)
-- **Best for:** Intensity images (fluorescence, brightfield, etc.)
-- **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
-- **Use case:** Most microscopy images where preserving smooth intensity variations is important
-
-### Nearest-Neighbor Interpolation
-- **Best for:** Label/segmentation images with discrete values
-- **Method:** Preserves exact pixel values during downscaling
-- **Use case:** Segmentation masks, label images where each value represents a distinct object/region
-
+- `"gaussian"` (default): Gaussian blur before downscaling. Use for intensity images.
+- `"nearest"`: nearest-neighbor. Preserves discrete values; use for labels and segmentation masks.
 
 ## Development
 
 ### Setting up development environment
 
 ```bash
-git clone https://github.com/Turku-BioImaging/ome-zarr-writer.git
-cd ome-zarr-writer
+git clone https://github.com/Turku-BioImaging/ome-zarr-io.git
+cd ome-zarr-io
 ./setup-dev.sh
 ```
 

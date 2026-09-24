@@ -3,7 +3,7 @@ Tests for TCZYX dimension ordering validation.
 """
 
 import pytest
-from ome_zarr_writer.schema_models import (
+from ome_zarr_io.schema_models import (
     Axis,
     validate_tczyx_axis_ordering,
     create_axes,  # New unified function
@@ -191,7 +191,7 @@ class TestTCZYXOrdering:
 
     def test_backward_compatibility_aliases(self):
         """Test that backward compatibility aliases work."""
-        from ome_zarr_writer.schema_models import create_2d_axes, create_3d_axes
+        from ome_zarr_io.schema_models import create_2d_axes, create_3d_axes
 
         # Test that old function names still work
         yx_axes = create_2d_axes(0.1, 0.1)
@@ -211,7 +211,7 @@ class TestTCZYXIntegration:
 
     def test_multiscale_validates_tczyx(self):
         """Test that Multiscale class validates TCZYX ordering."""
-        from ome_zarr_writer.schema_models import (
+        from ome_zarr_io.schema_models import (
             Multiscale,
             Dataset,
             ScaleTransformation,

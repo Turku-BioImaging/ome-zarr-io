@@ -6,8 +6,8 @@ import dask.array as da
 from pathlib import Path
 import copy
 import zarr
-from ome_zarr_writer.image import OmeZarrImage
-from ome_zarr_writer.schema_models import ScaleTransformation
+from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.schema_models import ScaleTransformation
 
 
 @pytest.fixture

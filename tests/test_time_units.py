@@ -3,7 +3,7 @@ Tests for time axis unit validation.
 """
 
 import pytest
-from ome_zarr_writer.schema_models import (
+from ome_zarr_io.schema_models import (
     Axis,
     create_axes,
     validate_tczyx_axis_ordering,

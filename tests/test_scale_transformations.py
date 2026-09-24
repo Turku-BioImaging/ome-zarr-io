@@ -4,8 +4,8 @@ import pytest
 import numpy as np
 from pathlib import Path
 import shutil
-from ome_zarr_writer import OmeZarrImage
-from ome_zarr_writer.schema_models import ScaleTransformation
+from ome_zarr_io import OmeZarrImage
+from ome_zarr_io.schema_models import ScaleTransformation
 
 
 class TestDictScaleTransformations:

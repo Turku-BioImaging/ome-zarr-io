@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test runner script for ome-zarr-writer
+# Test runner script for ome-zarr-io
 
 set -e
 
@@ -27,7 +27,7 @@ case "${1:-test}" in
         ;;
     "cov"|"coverage")
         echo "Running tests with coverage..."
-        run_command "pytest tests/ --cov=src/ome_zarr_writer --cov-report=term-missing"
+        run_command "pytest tests/ --cov=src/ome_zarr_io --cov-report=term-missing"
         ;;
     "fast")
         echo "Running fast tests only (excluding slow tests)..."
@@ -61,7 +61,7 @@ case "${1:-test}" in
         ;;
     "all")
         echo "Running full test suite..."
-        run_command "pytest tests/ --cov=src/ome_zarr_writer --cov-report=term-missing"
+        run_command "pytest tests/ --cov=src/ome_zarr_io --cov-report=term-missing"
         echo "Running examples..."
         run_command "python examples/schema_example.py"
         run_command "python examples/integration_example.py"

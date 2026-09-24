@@ -6,8 +6,8 @@ import pytest
 from pathlib import Path
 import zarr
 
-from ome_zarr_writer.image import OmeZarrImage
-from ome_zarr_writer.schema_models import Omero, Channel, Window, create_axes
+from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.schema_models import Omero, Channel, Window, create_axes
 
 
 class TestOmeroMetadata:

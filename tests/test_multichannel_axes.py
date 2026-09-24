@@ -3,7 +3,7 @@ Tests for multichannel axis creation functions.
 """
 
 import pytest
-from ome_zarr_writer.schema_models import (
+from ome_zarr_io.schema_models import (
     create_cyx_axes,
     create_czyx_axes,
     create_tyx_axes,

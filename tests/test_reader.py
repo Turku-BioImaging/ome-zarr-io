@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from ome_zarr_writer.image import OmeZarrImage
-from ome_zarr_writer.reader import Reader
-from ome_zarr_writer.schema_models import (
+from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.reader import Reader
+from ome_zarr_io.schema_models import (
     Axis,
     Channel,
     Dataset,

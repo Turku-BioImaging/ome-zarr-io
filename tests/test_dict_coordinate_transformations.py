@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 from pathlib import Path
 import shutil
-from ome_zarr_io import OmeZarrImage
+from ome_zarr_io import Writer
 from ome_zarr_io.schema_models import ScaleTransformation
 
 
@@ -27,7 +27,7 @@ class TestDictScaleTransformations:
         """Test scale transformations with simple float values."""
         scale_transformations = {"z": 0.25, "y": 0.1, "x": 0.1}
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,
@@ -60,7 +60,7 @@ class TestDictScaleTransformations:
 
         # Tuple format should raise an error
         with pytest.raises(ValueError, match="Expected a number"):
-            OmeZarrImage(
+            Writer(
                 path=self.output_path,
                 image=self.test_image,
                 dims=self.dims,
@@ -77,7 +77,7 @@ class TestDictScaleTransformations:
             # z and c will get default scale of 1.0
         }
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,
@@ -100,7 +100,7 @@ class TestDictScaleTransformations:
 
         scale_transformations = {"z": 0.5, "y": 0.1, "x": 0.1}
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=test_image,
             dims=dims,
@@ -125,7 +125,7 @@ class TestDictScaleTransformations:
         with pytest.raises(
             ValueError, match="Dimension 'invalid_dim' not found in dims"
         ):
-            OmeZarrImage(
+            Writer(
                 path=self.output_path,
                 image=self.test_image,
                 dims=self.dims,
@@ -145,7 +145,7 @@ class TestDictScaleTransformations:
         with pytest.raises(
             ValueError, match="Scale value for dimension 'z' must be positive"
         ):
-            OmeZarrImage(
+            Writer(
                 path=self.output_path,
                 image=self.test_image,
                 dims=self.dims,
@@ -163,7 +163,7 @@ class TestDictScaleTransformations:
         }
 
         with pytest.raises(ValueError, match="Invalid value for dimension 'z'"):
-            OmeZarrImage(
+            Writer(
                 path=self.output_path,
                 image=self.test_image,
                 dims=self.dims,
@@ -174,7 +174,7 @@ class TestDictScaleTransformations:
 
     def test_none_scale_transformations(self):
         """Test that None scale_transformations works correctly."""
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,
@@ -189,7 +189,7 @@ class TestDictScaleTransformations:
         """Test that empty dictionary creates default scale transformation."""
         scale_transformations = {}
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,
@@ -217,7 +217,7 @@ class TestDictScaleTransformations:
 
         # Should raise an error since tuple format is not supported
         with pytest.raises(ValueError, match="Expected a number"):
-            OmeZarrImage(
+            Writer(
                 path=self.output_path,
                 image=self.test_image,
                 dims=self.dims,

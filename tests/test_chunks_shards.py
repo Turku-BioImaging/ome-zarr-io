@@ -3,7 +3,7 @@
 import pytest
 import numpy as np
 import zarr
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 
 
 class TestChunksAndShardsAPI:
@@ -26,7 +26,7 @@ class TestChunksAndShardsAPI:
         axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_chunks = (32, 32)
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=output_path,
             image=sample_2d_image,
             dims=dims,
@@ -47,7 +47,7 @@ class TestChunksAndShardsAPI:
         axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_shards = (128, 128)
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=output_path,
             image=sample_2d_image,
             dims=dims,
@@ -73,7 +73,7 @@ class TestChunksAndShardsAPI:
         custom_chunks = (1, 2, 8, 8)
         custom_shards = (2, 4, 64, 64)
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=output_path,
             image=sample_4d_image,
             dims=dims,
@@ -96,7 +96,7 @@ class TestChunksAndShardsAPI:
         axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_chunks = (32, 32)
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=output_path,
             image=sample_2d_image,
             dims=dims,
@@ -123,7 +123,7 @@ class TestChunksAndShardsAPI:
         axis_units = {"y": "micrometer", "x": "micrometer"}
 
         # This should work - no chunks/shards in constructor
-        writer = OmeZarrImage(
+        writer = Writer(
             path=output_path,
             image=sample_2d_image,
             dims=dims,
@@ -148,7 +148,7 @@ class TestChunksAndShardsAPI:
         axis_units = {"y": "micrometer", "x": "micrometer"}
         custom_chunks = (64, 64)
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=output_path,
             image=sample_2d_image,
             dims=dims,

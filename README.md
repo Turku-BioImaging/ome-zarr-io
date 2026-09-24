@@ -7,7 +7,7 @@ Write valid OME-Zarr 0.5 multiscale images
 
 A Python package for reading and writing OME-Zarr 0.5 multiscale images using NumPy and Dask. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format.
 
-![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask&theme=dark)
+![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask,pytest,githubactions&theme=dark)
 
 ## Installation
 
@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ```python
 import numpy as np
 import zarr
-from ome_zarr_io import OmeZarrImage
+from ome_zarr_io import Writer
 
 # Create sample multichannel 3D confocal image data
 image = np.random.randint(0, 255, size=(2, 32, 512, 512), dtype=np.uint8)
@@ -59,7 +59,7 @@ scale_transformations = {
     "x": 0.15    # 0.15 μm pixel size in X
 }
 
-ome_zarr_image = OmeZarrImage(
+writer = Writer(
     path='example.ome.zarr',
     image=image,
     dims=dims,
@@ -74,7 +74,7 @@ ome_zarr_image = OmeZarrImage(
 # Optional: configure chunking, sharding, and compression for large datasets
 compressors = zarr.codecs.BloscCodec(cname="zstd", clevel=5, shuffle='bitshuffle')
 
-ome_zarr_image.write(
+writer.write(
     chunks=(1, 8, 256, 256),      # Optimize chunk size for access patterns
     shards=(2, 32, 512, 512),     # Group chunks into shards for efficiency
     compressors=compressors
@@ -86,13 +86,13 @@ ome_zarr_image.write(
 
 ```python
 import numpy as np
-from ome_zarr_io import OmeZarrImage
+from ome_zarr_io import Writer
 
 image = np.random.randint(0, 255, size=(512, 512), dtype=np.uint8)
 label_mask = np.zeros_like(image, dtype=np.uint8)
 label_mask[100:200, 100:200] = 1
 
-writer = OmeZarrImage(
+writer = Writer(
     path="example_labels.ome.zarr",
     image=image,
     dims=["y", "x"],
@@ -150,26 +150,54 @@ print(reader.get_physical_size())  # {"z": PhysicalSize(0.325, "micrometer"), ..
 print(reader.get_voxel_size())     # {"z": 0.325, "y": 0.15, "x": 0.15}
 ```
 
+### Validating an OME-Zarr fileset
+
+`validate()` checks a fileset against the OME-Zarr 0.5 schemas and returns a `FilesetReport`. It never
+raises on malformed metadata; problems are collected in `report.errors`.
+
+```python
+from ome_zarr_io import validate
+
+report = validate("example.ome.zarr")  # local path or URL
+
+if report:  # same as report.is_valid
+    print(report.spec_version, [a["name"] for a in report.axes])
+    print([c.label for c in report.channels], [lb.name for lb in report.labels])
+else:
+    for issue in report.errors:
+        print(issue.location, issue.path, issue.message)
+
+print(report)               # human-readable summary
+report.to_dict()            # JSON-serializable
+report.raise_if_invalid()   # raises jsonschema.exceptions.ValidationError
+```
+
+Use `strict=True` for the stricter schemas.
+
+### Command line
+
+The same validation is available as a command (also `python -m ome_zarr_io ...`):
+
+```bash
+ome-zarr-io validate example.ome.zarr                  # human-readable summary
+ome-zarr-io validate example.ome.zarr --strict --quiet && echo ok
+```
+
+Exit status is `0` if valid, `1` if invalid, and `2` on a usage error or if the target cannot be read.
+Remote URLs need `pip install "ome-zarr-io[remote]"`.
+
 ## Downscaling Methods
 
-### Gaussian Filtering (Default)
-- **Best for:** Intensity images (fluorescence, brightfield, etc.)
-- **Method:** Applies Gaussian blur before downscaling to prevent aliasing artifacts
-- **Use case:** Most microscopy images where preserving smooth intensity variations is important
-
-### Nearest-Neighbor Interpolation
-- **Best for:** Label/segmentation images with discrete values
-- **Method:** Preserves exact pixel values during downscaling
-- **Use case:** Segmentation masks, label images where each value represents a distinct object/region
-
+- `"gaussian"` (default): Gaussian blur before downscaling. Use for intensity images.
+- `"nearest"`: nearest-neighbor. Preserves discrete values; use for labels and segmentation masks.
 
 ## Development
 
 ### Setting up development environment
 
 ```bash
-git clone https://github.com/Turku-BioImaging/ome-zarr-writer.git
-cd ome-zarr-writer
+git clone https://github.com/Turku-BioImaging/ome-zarr-io.git
+cd ome-zarr-io
 ./setup-dev.sh
 ```
 

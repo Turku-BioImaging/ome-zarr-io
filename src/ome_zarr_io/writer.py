@@ -22,7 +22,7 @@ from .schema_models import (
 )
 
 
-class OmeZarrImage:
+class Writer:
     """Class for writing valid OME-Zarr 0.5 multiscale images.
 
     Provides functionality to write image data in the OME-Zarr format,
@@ -463,7 +463,7 @@ class OmeZarrImage:
                 zarr_kwargs["compressors"] = compressors
 
             zarr_array = label_group.create_array(**zarr_kwargs)
-            zarr_array[:] = level_array  # type: ignore
+            zarr_array[:] = np.asarray(level_array)  # type: ignore
 
             if level < len(label_level_transformations):
                 transformations = label_level_transformations[level]
@@ -579,7 +579,7 @@ class OmeZarrImage:
 
             # Create zarr array for this level and store the data
             zarr_array = root_group.create_array(**zarr_kwargs)
-            zarr_array[:] = array  # type: ignore
+            zarr_array[:] = np.asarray(array)  # type: ignore
 
             # Get coordinate transformations for this level
             if level_transformations and level < len(level_transformations):

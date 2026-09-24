@@ -2,8 +2,10 @@
 
 import numpy as np
 import pytest
+from jsonschema.exceptions import ValidationError
+from invalid_cases import make_broken_copy
 
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 from ome_zarr_io.reader import Reader
 from ome_zarr_io.schema_models import (
     Axis,
@@ -38,7 +40,7 @@ def written_image_path(tmp_path, channel_image, label_array):
         channels=[Channel(label="DAPI"), Channel(label="GFP")]
     )
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path,
         image=channel_image,
         dims=["c", "y", "x"],
@@ -103,7 +105,7 @@ class TestChannels:
         image = np.random.randint(0, 255, size=(2, 50, 50), dtype=np.uint8)
         omero_metadata = Omero(channels=[Channel(label=None), Channel(label="GFP")])
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=image,
             dims=["c", "y", "x"],
@@ -120,7 +122,7 @@ class TestChannels:
     def test_get_channel_no_channel_axis_raises(self, tmp_path):
         path = tmp_path / "no_channel.zarr"
         image = np.random.randint(0, 255, size=(50, 50), dtype=np.uint8)
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=image,
             dims=["y", "x"],
@@ -155,7 +157,7 @@ class TestLabels:
     def test_no_labels_returns_empty_list(self, tmp_path):
         path = tmp_path / "no_labels.zarr"
         image = np.random.randint(0, 255, size=(50, 50), dtype=np.uint8)
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=image,
             dims=["y", "x"],
@@ -174,6 +176,33 @@ class TestValidation:
 
     def test_get_validation_errors_empty_for_valid_fileset(self, reader):
         assert reader.get_validation_errors() == []
+
+    # Broken filesets the Reader can still open (metadata parses but is invalid).
+    @pytest.mark.parametrize(
+        "mutate,label",
+        [
+            (lambda a: a["ome"].update(version="0.4"), None),
+            (lambda a: a["ome"]["multiscales"][0]["datasets"][0].update(path=0), None),
+            (lambda a: a["ome"].pop("image-label"), "nuclei"),
+            (lambda a: a["ome"]["image-label"].update(source="x"), "nuclei"),
+        ],
+        ids=["old_version", "path_not_string", "label_no_image_label", "label_source_not_object"],
+    )
+    def test_validate_rejects_broken_fileset(self, written_image_path, tmp_path, mutate, label):
+        broken = make_broken_copy(written_image_path, tmp_path / "broken.zarr", mutate, label)
+        reader = Reader(broken)
+
+        with pytest.raises(ValidationError):
+            reader.validate()
+        assert reader.get_validation_errors() != []
+        assert not reader.report()
+
+    def test_errors_in_label_are_found_even_if_image_is_valid(self, written_image_path, tmp_path):
+        broken = make_broken_copy(
+            written_image_path, tmp_path / "broken.zarr", lambda a: a["ome"].pop("image-label"), "nuclei"
+        )
+        errors = Reader(broken).get_validation_errors()
+        assert len(errors) == 1 and "image-label" in errors[0]
 
 
 class TestPhysicalSize:

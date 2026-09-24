@@ -9,6 +9,7 @@ import numpy as np
 import zarr
 
 from .schema_models import Axis, Multiscale, OMEZarrImageMetadata
+from .report import FilesetReport, validate as _validate_fileset
 from .validator import OMEZarrValidator
 
 
@@ -83,6 +84,14 @@ class Reader:
             )
 
         return errors
+
+    def report(self, strict: bool = False) -> FilesetReport:
+        """Return a structured `FilesetReport` (validity plus a summary of the fileset).
+
+        Unlike `validate()`, this never raises for invalid metadata; see
+        `ome_zarr_io.validate` for details.
+        """
+        return _validate_fileset(self.path, strict=strict)
 
     # -- Channels ---------------------------------------------------------
 

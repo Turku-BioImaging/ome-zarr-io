@@ -4,6 +4,13 @@ Tests for the OME-Zarr validator.
 
 import pytest
 from jsonschema.exceptions import ValidationError
+from invalid_cases import (
+    SCHEMA_IMAGE_CASES,
+    SCHEMA_LABEL_CASES,
+    SEMANTIC_IMAGE_CASES,
+    SEMANTIC_LABEL_CASES,
+    read_attrs,
+)
 from ome_zarr_io.validator import OMEZarrValidator
 from ome_zarr_io.schema_models import (
     OMEZarrImageMetadata,
@@ -121,3 +128,88 @@ def test_schema_dataclasses_integration_with_validator(validator):
     # Check that no validation errors are present
     errors = validator.get_validation_errors(attrs_dict, "image")
     assert len(errors) == 0
+
+
+# -- Realistic broken metadata (see tests/invalid_cases.py) ---------------------
+
+
+@pytest.fixture
+def valid_image_attrs(valid_fileset):
+    return read_attrs(valid_fileset)
+
+
+@pytest.fixture
+def valid_label_attrs(valid_fileset):
+    return read_attrs(valid_fileset / "labels" / "nuclei")
+
+
+def dotted_issues(validator, attrs, schema_type):
+    """Issues as "<dotted.path> <message>" strings, the form used by `expected` fragments."""
+    return [
+        f"{'.'.join(map(str, path))} {message}"
+        for path, message in validator.iter_issues(attrs, schema_type)
+    ]
+
+
+def test_control_written_metadata_is_valid(validator, valid_image_attrs, valid_label_attrs):
+    assert validator.validate_image_metadata(valid_image_attrs) is True
+    assert validator.validate_label_metadata(valid_label_attrs) is True
+
+
+@pytest.mark.parametrize(
+    "case_id,mutate,expected", SCHEMA_IMAGE_CASES, ids=[c[0] for c in SCHEMA_IMAGE_CASES]
+)
+def test_image_schema_rejects_broken_metadata(validator, valid_image_attrs, case_id, mutate, expected):
+    mutate(valid_image_attrs)
+
+    with pytest.raises(ValidationError):
+        validator.validate_image_metadata(valid_image_attrs)
+
+    errors = validator.get_validation_errors(valid_image_attrs, "image")
+    assert errors
+    assert any(expected in text for text in dotted_issues(validator, valid_image_attrs, "image"))
+    # The strict schema is a superset of the permissive one.
+    assert len(validator.get_validation_errors(valid_image_attrs, "strict_image")) >= len(errors)
+
+
+@pytest.mark.parametrize(
+    "case_id,mutate,expected", SCHEMA_LABEL_CASES, ids=[c[0] for c in SCHEMA_LABEL_CASES]
+)
+def test_label_schema_rejects_broken_metadata(validator, valid_label_attrs, case_id, mutate, expected):
+    mutate(valid_label_attrs)
+
+    with pytest.raises(ValidationError):
+        validator.validate_label_metadata(valid_label_attrs)
+
+    assert validator.get_validation_errors(valid_label_attrs, "label")
+    assert any(expected in text for text in dotted_issues(validator, valid_label_attrs, "label"))
+
+
+@pytest.mark.parametrize(
+    "case_id,mutate,expected", SEMANTIC_IMAGE_CASES, ids=[c[0] for c in SEMANTIC_IMAGE_CASES]
+)
+def test_json_schema_alone_misses_semantic_image_errors(validator, valid_image_attrs, case_id, mutate, expected):
+    """These are invalid, but only `ome_zarr_io.validate()` catches them (see test_report)."""
+    mutate(valid_image_attrs)
+    assert validator.get_validation_errors(valid_image_attrs, "image") == []
+
+
+@pytest.mark.parametrize(
+    "case_id,mutate,expected", SEMANTIC_LABEL_CASES, ids=[c[0] for c in SEMANTIC_LABEL_CASES]
+)
+def test_json_schema_alone_misses_semantic_label_errors(validator, valid_label_attrs, case_id, mutate, expected):
+    mutate(valid_label_attrs)
+    assert validator.get_validation_errors(valid_label_attrs, "label") == []
+
+
+def test_iter_issues_returns_structured_paths(validator, valid_image_attrs):
+    valid_image_attrs["ome"]["multiscales"][0]["datasets"][0]["path"] = 0
+
+    issues = validator.iter_issues(valid_image_attrs, "image")
+
+    assert issues == [(("ome", "multiscales", 0, "datasets", 0, "path"), "0 is not of type 'string'")]
+
+
+def test_iter_issues_unknown_schema_type_raises(validator, valid_image_attrs):
+    with pytest.raises(ValueError, match="Schema type 'nope' not found"):
+        validator.iter_issues(valid_image_attrs, "nope")

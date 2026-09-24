@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 import tempfile
 
-from ome_zarr_io import OmeZarrImage
+from ome_zarr_io import Writer
 
 
 class TestPerDimensionAxisUnits:
@@ -29,7 +29,7 @@ class TestPerDimensionAxisUnits:
             "x": "micrometer",  # X dimension in micrometers
         }
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,
@@ -73,7 +73,7 @@ class TestPerDimensionAxisUnits:
             "x": "micrometer",
         }
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=test_image,
             dims=dims,
@@ -98,7 +98,7 @@ class TestPerDimensionAxisUnits:
             "x": "millimeter",  # Different unit for X
         }
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,
@@ -125,7 +125,7 @@ class TestPerDimensionAxisUnits:
             "X": "micrometer",  # Uppercase X
         }
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,
@@ -148,7 +148,7 @@ class TestPerDimensionAxisUnits:
         with pytest.raises(
             ValueError, match="Spatial dimension 'x' requires a unit specification"
         ):
-            OmeZarrImage(
+            Writer(
                 path=self.output_path,
                 image=self.test_image,
                 dims=self.dims,
@@ -171,7 +171,7 @@ class TestPerDimensionAxisUnits:
         with pytest.raises(
             ValueError, match="Time dimension 't' requires a unit specification"
         ):
-            OmeZarrImage(
+            Writer(
                 path=self.output_path,
                 image=test_image,
                 dims=dims,
@@ -188,7 +188,7 @@ class TestPerDimensionAxisUnits:
             # Note: no "c" entry - should be handled automatically
         }
 
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=self.output_path,
             image=self.test_image,
             dims=self.dims,

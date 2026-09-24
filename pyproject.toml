@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ome-zarr-io"
 version = "0.7.0"
-description = "Write valid OME-Zarr 0.5 multiscale images"
+description = "Write, read, and validate OME-Zarr 0.5 multiscale images"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -33,13 +33,21 @@ requires-python = ">=3.11"
 dependencies = [
     "dask",
     "dask-image",
-    "jsonschema>=4.0.0",
+    "jsonschema>=4.18.0",
     "numpy>=1.20.0",
     "scikit-image",
     "zarr>=3,<4"
 ]
 
+[project.scripts]
+ome-zarr-io = "ome_zarr_io.cli:main"
+
 [project.optional-dependencies]
+remote = [
+    "fsspec",
+    "aiohttp",
+    "requests",
+]
 dev = [
     "pytest>=6.0",
     "pytest-cov",

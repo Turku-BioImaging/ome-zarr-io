@@ -4,12 +4,12 @@ from typing import List, Dict, Any
 import numpy as np
 import pytest
 
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 from ome_zarr_io.schema_models import Axis
 
 
 class TestAxisUnits:
-    """Test the axis_units parameter in OmeZarrImage."""
+    """Test the axis_units parameter in Writer."""
 
     def test_axis_units_with_list_of_axes(self, tmp_path):
         """Test axis_units parameter with a list of Axis objects."""
@@ -26,7 +26,7 @@ class TestAxisUnits:
         ]
 
         # Create OME-Zarr image
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=tmp_path / "test_list.zarr",
             image=image,
             dims=dims,
@@ -69,7 +69,7 @@ class TestAxisUnits:
         }
 
         # Create OME-Zarr image
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=tmp_path / "test_dict.zarr",
             image=image,
             dims=dims,
@@ -110,7 +110,7 @@ class TestAxisUnits:
         axis_units: Dict[str, Any] = {"y": "micrometer", "x": "micrometer"}
 
         # Create OME-Zarr image
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=tmp_path / "test_minimal.zarr",
             image=image,
             dims=dims,
@@ -145,7 +145,7 @@ class TestAxisUnits:
             ValueError,
             match="Length of axis_units list.*must match number of dimensions",
         ):
-            OmeZarrImage(
+            Writer(
                 path=tmp_path / "test_error.zarr",
                 image=image,
                 dims=dims,
@@ -163,7 +163,7 @@ class TestAxisUnits:
         with pytest.raises(
             ValueError, match="Length of dims.*must match number of image dimensions"
         ):
-            OmeZarrImage(
+            Writer(
                 path=tmp_path / "test_error2.zarr",
                 image=image,
                 dims=dims,
@@ -179,7 +179,7 @@ class TestAxisUnits:
         axis_units: Dict[str, Any] = {"y": "micrometer", "invalid": "micrometer"}
 
         with pytest.raises(ValueError, match="Unknown dimension 'invalid'"):
-            OmeZarrImage(
+            Writer(
                 path=tmp_path / "test_error3.zarr",
                 image=image,
                 dims=dims,
@@ -199,7 +199,7 @@ class TestAxisUnits:
             ValueError,
             match="axis_units must be either a list of Axis objects or a dictionary",
         ):
-            OmeZarrImage(
+            Writer(
                 path=tmp_path / "test_error4.zarr",
                 image=image,
                 dims=dims,
@@ -219,7 +219,7 @@ class TestAxisUnits:
         ]
 
         with pytest.raises(ValueError, match="axis_units.*must be an Axis object"):
-            OmeZarrImage(
+            Writer(
                 path=tmp_path / "test_error5.zarr",
                 image=image,
                 dims=dims,

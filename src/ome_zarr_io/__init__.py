@@ -13,6 +13,7 @@ from .writer import Writer
 from .validator import OMEZarrValidator
 from .reader import Reader, PhysicalSize
 from .report import FilesetReport, ValidationIssue, validate
+from .channels import random_colors
 from .schema_models import Axis, Channel, Omero, Window
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "Channel",
     "Window",
     "Omero",
+    "random_colors",
 ]

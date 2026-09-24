@@ -9,6 +9,7 @@ import numpy as np
 import zarr
 from zarr.core.array import CompressorsLike
 
+from .channels import ChannelSpec, any_needs_stats, parse_channels, resolve_channels
 from .downscaler import Downscaler
 from .schema_models import (
     Axis,
@@ -42,6 +43,9 @@ class Writer:
         downscale_factor: float = 2.0,
         overwrite: bool = False,
         omero_metadata: Optional[Omero] = None,
+        channels: Optional[Union[Dict[str, Any], List[Any], Omero]] = None,
+        colors: Optional[Literal["random"]] = None,
+        color_seed: int = 0,
     ):
         """Initialize the OME-Zarr writer.
 
@@ -67,6 +71,15 @@ class Writer:
             overwrite: Whether to overwrite existing files.
             omero_metadata: Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
+            channels: Plain-Python channel description, an alternative to ``omero_metadata``.
+                A dict keyed by label (``{"DAPI": {"color": "0000FF", "window": (0, 4095)}}``),
+                a list of labels, a list of dicts, or an Omero object. Per-channel keys:
+                ``color`` (hex without "#", or "random"), ``window`` ("auto" (default),
+                "minmax", (start, end), a Window, or None), ``family`` and ``active``.
+                Window min/max are the data's min/max; "auto" start/end follow Fiji's
+                auto-contrast. Requires a "c" axis with one entry per channel.
+            colors: "random" assigns a distinct color to every channel without one.
+            color_seed: Changes the automatic palette; the same seed gives the same colors.
             zarr_backend: Zarr backend to use for writing. Either "zarr-python" or "zarrs"
                 (default: "zarrs").
         """
@@ -96,6 +109,29 @@ class Writer:
 
         # Store OMERO metadata
         self.omero_metadata = omero_metadata
+        self._channel_specs: Optional[List[ChannelSpec]] = None
+        self.color_seed = color_seed
+        if channels is not None:
+            if omero_metadata is not None:
+                raise ValueError("pass either channels or omero_metadata, not both")
+            self._init_channels(channels, colors)
+        elif colors is not None:
+            raise ValueError("colors requires channels")
+
+    def _init_channels(self, channels: Any, colors: Optional[str]) -> None:
+        if "c" not in self.dims:
+            raise ValueError("channels requires a 'c' axis in dims")
+        parsed = parse_channels(channels, colors)
+        n_axis = self.image.shape[self.dims.index("c")]
+        n = len(parsed.channels) if isinstance(parsed, Omero) else len(parsed)
+        if n != n_axis:
+            raise ValueError(
+                f"{n} channels given but the 'c' axis has {n_axis} entries"
+            )
+        if isinstance(parsed, Omero):
+            self.omero_metadata = parsed
+        else:
+            self._channel_specs = parsed
 
     @property
     def downscale_levels(self) -> Optional[int]:
@@ -412,8 +448,8 @@ class Writer:
         root_group = zarr.open_group(str(self.path), mode="a")
 
         labels_group = root_group.require_group("labels")
-        labels_group_ome_attrs = dict(labels_group.attrs.get("ome", {})) # type: ignore
-        labels = labels_group_ome_attrs.get("labels", []) # type: ignore
+        labels_group_ome_attrs = dict(labels_group.attrs.get("ome", {}))  # type: ignore
+        labels = labels_group_ome_attrs.get("labels", [])  # type: ignore
         if name in labels and not overwrite:
             raise ValueError(f"Label '{name}' already exists in this image group")
 
@@ -507,8 +543,8 @@ class Writer:
         if name not in labels:
             labels.append(name)
 
-        labels_group_ome_attrs["labels"] = labels # type: ignore
-        labels_group.attrs["ome"] = {       # type: ignore
+        labels_group_ome_attrs["labels"] = labels  # type: ignore
+        labels_group.attrs["ome"] = {  # type: ignore
             **labels_group_ome_attrs,
             "version": "0.5",
         }
@@ -559,6 +595,7 @@ class Writer:
 
         # Create datasets for each resolution level
         datasets = []
+        level0: Optional[np.ndarray] = None
         for level, array in enumerate(arrays):
 
             # Prepare args for zarr.create_array
@@ -579,7 +616,14 @@ class Writer:
 
             # Create zarr array for this level and store the data
             zarr_array = root_group.create_array(**zarr_kwargs)
-            zarr_array[:] = np.asarray(array)  # type: ignore
+            data = np.asarray(array)
+            zarr_array[:] = data  # type: ignore
+            if (
+                level == 0
+                and self._channel_specs
+                and any_needs_stats(self._channel_specs)
+            ):
+                level0 = data
 
             # Get coordinate transformations for this level
             if level_transformations and level < len(level_transformations):
@@ -605,10 +649,14 @@ class Writer:
             name=self.path.stem,  # Use filename as name
         )
 
+        omero = self.omero_metadata
+        if self._channel_specs is not None:
+            omero = resolve_channels(
+                self._channel_specs, level0, self.dims.index("c"), self.color_seed
+            )
+
         # Create OME metadata
-        ome_metadata = OMEMetadata(
-            multiscales=[multiscale], version="0.5", omero=self.omero_metadata
-        )
+        ome_metadata = OMEMetadata(multiscales=[multiscale], version="0.5", omero=omero)
 
         # Create final metadata container
         metadata = OMEZarrImageMetadata(ome=ome_metadata)

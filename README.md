@@ -150,6 +150,30 @@ print(reader.get_physical_size())  # {"z": PhysicalSize(0.325, "micrometer"), ..
 print(reader.get_voxel_size())     # {"z": 0.325, "y": 0.15, "x": 0.15}
 ```
 
+### Validating an OME-Zarr fileset
+
+`validate()` checks a fileset against the OME-Zarr 0.5 schemas and returns a `FilesetReport`. It never
+raises on malformed metadata; problems are collected in `report.errors`.
+
+```python
+from ome_zarr_io import validate
+
+report = validate("example.ome.zarr")  # local path or URL
+
+if report:  # same as report.is_valid
+    print(report.spec_version, [a["name"] for a in report.axes])
+    print([c.label for c in report.channels], [lb.name for lb in report.labels])
+else:
+    for issue in report.errors:
+        print(issue.location, issue.path, issue.message)
+
+print(report)               # human-readable summary
+report.to_dict()            # JSON-serializable
+report.raise_if_invalid()   # raises jsonschema.exceptions.ValidationError
+```
+
+Use `strict=True` for the stricter schemas. Remote `http(s)://` URLs need `aiohttp` and `requests`.
+
 ## Downscaling Methods
 
 ### Gaussian Filtering (Default)

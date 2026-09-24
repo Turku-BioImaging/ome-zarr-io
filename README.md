@@ -1,6 +1,6 @@
 # ome-zarr-io
 
-Write valid OME-Zarr 0.5 multiscale images
+Read, write, and validate OME-Zarr 0.5 multiscale images
 
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml)
 [![Python 3.11 | 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)

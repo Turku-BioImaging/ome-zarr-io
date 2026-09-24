@@ -382,7 +382,8 @@ def validate(path: Union[str, Path], strict: bool = False) -> FilesetReport:
         A `FilesetReport`. `bool(report)` is True when the fileset is valid.
 
     Raises:
-        FileNotFoundError: If a local `path` does not exist.
+        FileNotFoundError: If `path` does not exist (for URLs: if no Zarr group is
+            found there).
     """
     location_str = str(path)
     if "://" not in location_str and not Path(location_str).exists():
@@ -393,6 +394,10 @@ def validate(path: Union[str, Path], strict: bool = False) -> FilesetReport:
     try:
         root = zarr.open_group(location_str, mode="r")
     except zarr.errors.GroupNotFoundError:
+        if "://" in location_str:  # e.g. a mistyped URL, not a malformed fileset
+            raise FileNotFoundError(
+                f"No OME-Zarr group found at '{location_str}'"
+            ) from None
         report.errors.append(
             ValidationIssue("", "not a Zarr group (no zarr.json found)")
         )

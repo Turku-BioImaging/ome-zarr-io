@@ -213,6 +213,13 @@ class TestFilesetStructure:
         with pytest.raises(FileNotFoundError):
             validate(tmp_path / "does-not-exist.zarr")
 
+    def test_url_without_a_group_raises_like_a_missing_path(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            validate(f"file://{tmp_path}")
+
+    def test_file_url_to_valid_fileset(self, valid_fileset):
+        assert validate(f"file://{valid_fileset}").is_valid
+
     def test_directory_is_not_a_zarr_group(self, tmp_path):
         report = validate(tmp_path)
         assert not report

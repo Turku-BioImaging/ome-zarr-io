@@ -39,7 +39,15 @@ dependencies = [
     "zarr>=3,<4"
 ]
 
+[project.scripts]
+ome-zarr-io = "ome_zarr_io.cli:main"
+
 [project.optional-dependencies]
+remote = [
+    "fsspec",
+    "aiohttp",
+    "requests",
+]
 dev = [
     "pytest>=6.0",
     "pytest-cov",

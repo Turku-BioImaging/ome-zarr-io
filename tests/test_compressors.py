@@ -6,7 +6,7 @@ from pathlib import Path
 import zarr
 from zarr.codecs import BloscCodec, GzipCodec, ZstdCodec
 
-from ome_zarr_io import OmeZarrImage
+from ome_zarr_io import Writer
 
 
 class TestCompressorsParameter:
@@ -20,7 +20,7 @@ class TestCompressorsParameter:
             axis_units = {"y": "micrometer", "x": "micrometer"}
             output_path = Path(tmp_dir) / "single_compressor.zarr"
 
-            writer = OmeZarrImage(
+            writer = Writer(
                 path=output_path,
                 image=image,
                 dims=dims,
@@ -48,7 +48,7 @@ class TestCompressorsParameter:
             axis_units = {"y": "micrometer", "x": "micrometer"}
             output_path = Path(tmp_dir) / "multiple_compressors.zarr"
 
-            writer = OmeZarrImage(
+            writer = Writer(
                 path=output_path,
                 image=image,
                 dims=dims,
@@ -76,7 +76,7 @@ class TestCompressorsParameter:
             axis_units = {"y": "micrometer", "x": "micrometer"}
             output_path = Path(tmp_dir) / "zstd_compressor.zarr"
 
-            writer = OmeZarrImage(
+            writer = Writer(
                 path=output_path,
                 image=image,
                 dims=dims,
@@ -104,7 +104,7 @@ class TestCompressorsParameter:
             axis_units = {"y": "micrometer", "x": "micrometer"}
             output_path = Path(tmp_dir) / "no_compressor.zarr"
 
-            writer = OmeZarrImage(
+            writer = Writer(
                 path=output_path,
                 image=image,
                 dims=dims,
@@ -132,7 +132,7 @@ class TestCompressorsParameter:
             axis_units = {"y": "micrometer", "x": "micrometer"}
             output_path = Path(tmp_dir) / "multiscale_compressor.zarr"
 
-            writer = OmeZarrImage(
+            writer = Writer(
                 path=output_path,
                 image=image,
                 dims=dims,
@@ -170,7 +170,7 @@ class TestCompressorsParameter:
             axis_units = {"y": "micrometer", "x": "micrometer"}
             output_path = Path(tmp_dir) / "compressor_chunks_shards.zarr"
 
-            writer = OmeZarrImage(
+            writer = Writer(
                 path=output_path,
                 image=image,
                 dims=dims,

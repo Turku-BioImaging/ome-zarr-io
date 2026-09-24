@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 from ome_zarr_io.reader import Reader
 from ome_zarr_io.schema_models import (
     Axis,
@@ -38,7 +38,7 @@ def written_image_path(tmp_path, channel_image, label_array):
         channels=[Channel(label="DAPI"), Channel(label="GFP")]
     )
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path,
         image=channel_image,
         dims=["c", "y", "x"],
@@ -103,7 +103,7 @@ class TestChannels:
         image = np.random.randint(0, 255, size=(2, 50, 50), dtype=np.uint8)
         omero_metadata = Omero(channels=[Channel(label=None), Channel(label="GFP")])
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=image,
             dims=["c", "y", "x"],
@@ -120,7 +120,7 @@ class TestChannels:
     def test_get_channel_no_channel_axis_raises(self, tmp_path):
         path = tmp_path / "no_channel.zarr"
         image = np.random.randint(0, 255, size=(50, 50), dtype=np.uint8)
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=image,
             dims=["y", "x"],
@@ -155,7 +155,7 @@ class TestLabels:
     def test_no_labels_returns_empty_list(self, tmp_path):
         path = tmp_path / "no_labels.zarr"
         image = np.random.randint(0, 255, size=(50, 50), dtype=np.uint8)
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=image,
             dims=["y", "x"],

@@ -1,4 +1,4 @@
-"""Test the OmeZarrImage class initialization and basic functionality."""
+"""Test the Writer class initialization and basic functionality."""
 
 import pytest
 import numpy as np
@@ -6,7 +6,7 @@ import dask.array as da
 from pathlib import Path
 import copy
 import zarr
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 from ome_zarr_io.schema_models import ScaleTransformation
 
 
@@ -34,7 +34,7 @@ def test_init_with_numpy_array(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path, image=sample_2d_image, dims=dims, axis_units=axis_units
     )
 
@@ -51,7 +51,7 @@ def test_init_with_dask_array(temp_dir, sample_2d_image):
     axis_units = {"y": "micrometer", "x": "micrometer"}
     dask_image = da.from_array(sample_2d_image, chunks="auto")
 
-    writer = OmeZarrImage(path=path, image=dask_image, dims=dims, axis_units=axis_units)
+    writer = Writer(path=path, image=dask_image, dims=dims, axis_units=axis_units)
 
     assert writer.path == Path(path)
     assert isinstance(writer.image, da.Array)
@@ -66,7 +66,7 @@ def test_init_with_coordinate_transformations(temp_dir, sample_2d_image):
     # Test with simple scale transformations
     scale_transformations = {"y": 0.1, "x": 0.1}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -87,7 +87,7 @@ def test_init_with_overwrite_flag(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -104,7 +104,7 @@ def test_path_handling_string_input(sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path_str, image=sample_2d_image, dims=dims, axis_units=axis_units
     )
 
@@ -118,7 +118,7 @@ def test_add_labels_to_existing_image(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -160,7 +160,7 @@ def test_write_method_works(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path, image=sample_2d_image, dims=dims, axis_units=axis_units
     )
 
@@ -177,7 +177,7 @@ def test_3d_image_initialization(temp_dir, sample_3d_image):
     dims = ["z", "y", "x"]
     axis_units = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path, image=sample_3d_image, dims=dims, axis_units=axis_units
     )
 
@@ -193,7 +193,7 @@ def test_multichannel_image_dims(temp_dir):
     dims = ["c", "y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path, image=multichannel_image, dims=dims, axis_units=axis_units
     )
 
@@ -211,7 +211,7 @@ def test_write_without_zarr_backend(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path, image=sample_2d_image, dims=dims, axis_units=axis_units
     )
 
@@ -229,7 +229,7 @@ def test_write_preserves_zarr_config(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -248,7 +248,7 @@ def test_write_leaves_zarr_config_intact(temp_dir, sample_2d_image):
     dims = ["y", "x"]
     axis_units = {"y": "micrometer", "x": "micrometer"}
 
-    writer = OmeZarrImage(
+    writer = Writer(
         path=path,
         image=sample_2d_image,
         dims=dims,
@@ -271,7 +271,7 @@ def test_multiple_writes_preserve_config(temp_dir, sample_2d_image):
 
     baseline = copy.deepcopy(zarr.config.get("codec_pipeline"))
 
-    writer1 = OmeZarrImage(
+    writer1 = Writer(
         path=path1,
         image=sample_2d_image,
         dims=dims,
@@ -280,7 +280,7 @@ def test_multiple_writes_preserve_config(temp_dir, sample_2d_image):
     writer1.write()
     assert zarr.config.get("codec_pipeline") == baseline
 
-    writer2 = OmeZarrImage(
+    writer2 = Writer(
         path=path2,
         image=sample_2d_image,
         dims=dims,

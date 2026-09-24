@@ -1,7 +1,7 @@
 """Comprehensive tests for downscaling functionality in OME-Zarr writer.
 
 This module tests both the Downscaler class (in isolation) and its integration
-with the OmeZarrImage class to ensure proper downscaling behavior.
+with the Writer class to ensure proper downscaling behavior.
 """
 
 import pytest
@@ -9,7 +9,7 @@ import numpy as np
 import dask.array as da
 import zarr
 from pathlib import Path
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 from ome_zarr_io.downscaler import Downscaler
 from ome_zarr_io.schema_models import ScaleTransformation
 
@@ -153,8 +153,8 @@ class TestDownscaler:
         assert arrays[2].shape == (5, 3, 25, 25)
 
 
-class TestOmeZarrImageDownscaling:
-    """Test downscaling integration with OmeZarrImage."""
+class TestWriterDownscaling:
+    """Test downscaling integration with Writer."""
 
     def test_gaussian_method_reference_validation(self, temp_dir):
         """Test gaussian downscale method produces correct results by comparing with reference implementation."""
@@ -170,8 +170,8 @@ class TestOmeZarrImageDownscaling:
         downscale_factor = 1.5
         downscale_levels = 4
 
-        # Test OmeZarrImage implementation
-        writer = OmeZarrImage(
+        # Test Writer implementation
+        writer = Writer(
             path=path,
             image=test_image,
             dims=dims,
@@ -181,7 +181,7 @@ class TestOmeZarrImageDownscaling:
             downscale_factor=downscale_factor,
         )
 
-        # Get downscaled arrays from OmeZarrImage
+        # Get downscaled arrays from Writer
         ome_arrays = writer._create_downscaled_arrays()
 
         # Test specific expected shapes for our test case with factor 1.5
@@ -247,7 +247,7 @@ class TestOmeZarrImageDownscaling:
         dims = ["y", "x"]
         axis_units = {"y": "micrometer", "x": "micrometer"}
 
-        writer_gaussian = OmeZarrImage(
+        writer_gaussian = Writer(
             path=path_gaussian,
             image=test_image,
             dims=dims,
@@ -256,7 +256,7 @@ class TestOmeZarrImageDownscaling:
             downscale_levels=1,
         )
 
-        writer_nearest = OmeZarrImage(
+        writer_nearest = Writer(
             path=path_nearest,
             image=test_image,
             dims=dims,
@@ -290,12 +290,12 @@ class TestOmeZarrImageDownscaling:
     def test_downscale_methods_with_ome_zarr_image(
         self, temp_dir, sample_2d_image, method
     ):
-        """Test both downscale methods integrate properly with OmeZarrImage."""
+        """Test both downscale methods integrate properly with Writer."""
         path = temp_dir / f"test_{method}.zarr"
         dims = ["y", "x"]
         axis_units = {"y": "micrometer", "x": "micrometer"}
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,
@@ -324,7 +324,7 @@ class TestOmeZarrImageDownscaling:
         axis_units = {"y": "micrometer", "x": "micrometer"}
 
         # Test without specifying downscale_method - should default to gaussian
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,
@@ -348,7 +348,7 @@ class TestOmeZarrImageDownscaling:
 
         # The current implementation accepts invalid methods at runtime
         # but they are caught by type checkers due to Literal["gaussian", "nearest"]
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,
@@ -378,7 +378,7 @@ class TestOmeZarrImageDownscaling:
         dims = ["t", "c", "y", "x"]
         axis_units = {"t": "second", "y": "micrometer", "x": "micrometer"}
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=multi_dim_image,
             dims=dims,
@@ -405,7 +405,7 @@ class TestOmeZarrImageDownscaling:
         axis_units = {"y": "micrometer", "x": "micrometer"}
         scale_transformations = {"y": 0.1, "x": 0.1}
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,
@@ -429,7 +429,7 @@ class TestOmeZarrImageDownscaling:
         dims = ["y", "x"]
         axis_units = {"y": "micrometer", "x": "micrometer"}
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,
@@ -470,7 +470,7 @@ class TestOmeZarrImageDownscaling:
         axis_units = {"y": "micrometer", "x": "micrometer"}
         downscale_levels = 3
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,
@@ -506,7 +506,7 @@ class TestOmeZarrImageDownscaling:
         dims = ["y", "x"]
         axis_units = {"y": "micrometer", "x": "micrometer"}
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,
@@ -529,12 +529,12 @@ class TestBackwardCompatibility:
     """Test that the refactored code maintains backward compatibility."""
 
     def test_ome_zarr_image_properties_work(self, temp_dir, sample_2d_image):
-        """Test that OmeZarrImage properties still provide access to downscaler settings."""
+        """Test that Writer properties still provide access to downscaler settings."""
         path = temp_dir / "test.zarr"
         dims = ["y", "x"]
         axis_units = {"y": "micrometer", "x": "micrometer"}
 
-        writer = OmeZarrImage(
+        writer = Writer(
             path=path,
             image=sample_2d_image,
             dims=dims,

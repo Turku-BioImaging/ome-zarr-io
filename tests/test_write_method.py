@@ -4,7 +4,7 @@ from typing import List, Union
 import numpy as np
 import zarr
 
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 from ome_zarr_io.schema_models import ScaleTransformation, TranslationTransformation
 
 
@@ -21,7 +21,7 @@ class TestWriteMethod:
         output_path = tmp_path / "test_2d.zarr"
 
         # Create and write OME-Zarr image
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=output_path,
             image=image,
             dims=dims,
@@ -82,7 +82,7 @@ class TestWriteMethod:
         output_path = tmp_path / "test_multiscale.zarr"
 
         # Create OME-Zarr image with downscaling
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=output_path,
             image=image,
             dims=dims,
@@ -134,7 +134,7 @@ class TestWriteMethod:
         output_path = tmp_path / "test_transforms.zarr"
 
         # Create OME-Zarr image
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=output_path,
             image=image,
             dims=dims,
@@ -170,7 +170,7 @@ class TestWriteMethod:
         output_path = tmp_path / "test_overwrite.zarr"
 
         # Create first image
-        ome_zarr_image1 = OmeZarrImage(
+        ome_zarr_image1 = Writer(
             path=output_path,
             image=image,
             dims=dims,
@@ -184,7 +184,7 @@ class TestWriteMethod:
 
         # Create second image with different data
         image2 = np.random.randint(100, 200, size=(32, 32), dtype=np.uint8)
-        ome_zarr_image2 = OmeZarrImage(
+        ome_zarr_image2 = Writer(
             path=output_path,
             image=image2,
             dims=dims,
@@ -208,7 +208,7 @@ class TestWriteMethod:
         output_path = tmp_path / "test_chunks_shards.zarr"
 
         # Create OME-Zarr image
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=output_path,
             image=image,
             dims=dims,
@@ -242,7 +242,7 @@ class TestWriteMethod:
         output_path = tmp_path / "test_preserve.zarr"
 
         # Create and write OME-Zarr image
-        ome_zarr_image = OmeZarrImage(
+        ome_zarr_image = Writer(
             path=output_path,
             image=original_image,
             dims=dims,

@@ -22,7 +22,7 @@ from .schema_models import (
 )
 
 
-class OmeZarrImage:
+class Writer:
     """Class for writing valid OME-Zarr 0.5 multiscale images.
 
     Provides functionality to write image data in the OME-Zarr format,

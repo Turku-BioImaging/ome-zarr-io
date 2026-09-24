@@ -9,13 +9,13 @@ except PackageNotFoundError:  # not installed, e.g. running from a source checko
 __author__ = "Junel Solis, Turku BioImaging"
 __email__ = "junel.solis@abo.fi"
 
-from .image import OmeZarrImage
+from .writer import Writer
 from .validator import OMEZarrValidator
 from .reader import Reader, PhysicalSize
 from .schema_models import Axis, Channel, Omero, Window, create_axes
 
 __all__ = [
-    "OmeZarrImage",
+    "Writer",
     "OMEZarrValidator",
     "Reader",
     "PhysicalSize",

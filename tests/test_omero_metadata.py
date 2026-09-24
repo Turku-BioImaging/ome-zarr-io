@@ -1,4 +1,4 @@
-"""Tests for OMERO metadata functionality in OmeZarrImage."""
+"""Tests for OMERO metadata functionality in Writer."""
 
 import numpy as np
 import tempfile
@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 import zarr
 
-from ome_zarr_io.image import OmeZarrImage
+from ome_zarr_io.writer import Writer
 from ome_zarr_io.schema_models import Omero, Channel, Window, create_axes
 
 
@@ -36,7 +36,7 @@ class TestOmeroMetadata:
             output_path = Path(temp_dir) / "test_omero.ome.zarr"
 
             # Create OME-Zarr image with OMERO metadata
-            ome_zarr = OmeZarrImage(
+            ome_zarr = Writer(
                 path=output_path,
                 image=image,
                 dims=["c", "y", "x"],
@@ -97,7 +97,7 @@ class TestOmeroMetadata:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "test_omero_optional.ome.zarr"
 
-            ome_zarr = OmeZarrImage(
+            ome_zarr = Writer(
                 path=output_path,
                 image=image,
                 dims=["c", "y", "x"],
@@ -130,7 +130,7 @@ class TestOmeroMetadata:
             output_path = Path(temp_dir) / "test_no_omero.ome.zarr"
 
             # Create OME-Zarr without OMERO metadata
-            ome_zarr = OmeZarrImage(
+            ome_zarr = Writer(
                 path=output_path,
                 image=image,
                 dims=["y", "x"],
@@ -170,7 +170,7 @@ class TestOmeroMetadata:
             output_path = Path(temp_dir) / "test_omero_multiscale.ome.zarr"
 
             # Create multiscale OME-Zarr with OMERO metadata
-            ome_zarr = OmeZarrImage(
+            ome_zarr = Writer(
                 path=output_path,
                 image=image,
                 dims=["c", "y", "x"],
@@ -206,7 +206,7 @@ class TestOmeroMetadata:
             output_path = Path(temp_dir) / "test_validation.ome.zarr"
 
             # Test with None (should work)
-            ome_zarr = OmeZarrImage(
+            ome_zarr = Writer(
                 path=output_path,
                 image=image,
                 dims=["y", "x"],
@@ -233,7 +233,7 @@ class TestOmeroMetadata:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "test_storage.ome.zarr"
 
-            ome_zarr = OmeZarrImage(
+            ome_zarr = Writer(
                 path=output_path,
                 image=image,
                 dims=["y", "x"],

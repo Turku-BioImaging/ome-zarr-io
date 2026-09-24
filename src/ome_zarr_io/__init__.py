@@ -12,7 +12,7 @@ __email__ = "junel.solis@abo.fi"
 from .writer import Writer
 from .validator import OMEZarrValidator
 from .reader import Reader, PhysicalSize
-from .schema_models import Axis, Channel, Omero, Window, create_axes
+from .schema_models import Axis, Channel, Omero, Window
 
 __all__ = [
     "Writer",
@@ -23,5 +23,4 @@ __all__ = [
     "Channel",
     "Window",
     "Omero",
-    "create_axes",
 ]

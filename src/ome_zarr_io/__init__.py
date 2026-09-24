@@ -1,8 +1,13 @@
 """OME-Zarr package for reading and valid OME-Zarr 0.5 multiscale images."""
 
-__version__ = "0.1.0"
+import importlib.metadata
+
+__version__ = importlib.metadata.version("ome-zarr-io")
 __author__ = "Junel Solis, Turku BioImaging"
 __email__ = "junel.solis@abo.fi"
+
+from mypy.typeshed.stdlib import importlib
+
 
 from .image import OmeZarrImage
 from .downscaler import Downscaler

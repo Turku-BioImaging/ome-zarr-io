@@ -2,9 +2,11 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict
-from jsonschema import Draft202012Validator, RefResolver
+from typing import Any, Dict, List, Tuple
+from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT202012
 
 
 class OMEZarrValidator:
@@ -18,11 +20,11 @@ class OMEZarrValidator:
         """
         self.schema_version = schema_version
         self._schemas = {}
-        self._resolver = None
+        self._registry = Registry()
         self._load_schemas()
 
     def _load_schemas(self) -> None:
-        """Load all schema files and create a resolver."""
+        """Load all schema files and create a registry for resolving $ref links."""
         schema_path = (
             Path(__file__).parent.parent / "spec" / self.schema_version / "schemas"
         )
@@ -35,14 +37,13 @@ class OMEZarrValidator:
                 if schema_id:
                     self._schemas[schema_id] = schema
 
-        # Create a resolver for handling $ref links
-        self._resolver = RefResolver(
-            base_uri=f"https://ngff.openmicroscopy.org/{self.schema_version}/schemas/",
-            referrer=self._schemas.get(
-                f"https://ngff.openmicroscopy.org/{self.schema_version}/schemas/ome_zarr.schema",
-                {},
-            ),
-            store=self._schemas,
+        # Register every schema by its $id so that $ref links between them resolve
+        self._registry = Registry().with_resources(
+            (
+                schema_id,
+                Resource.from_contents(schema, default_specification=DRAFT202012),
+            )
+            for schema_id, schema in self._schemas.items()
         )
 
     def validate_metadata(
@@ -68,7 +69,7 @@ class OMEZarrValidator:
             raise ValueError(f"Schema type '{schema_type}' not found")
 
         schema = self._schemas[schema_id]
-        validator = Draft202012Validator(schema, resolver=self._resolver)
+        validator = Draft202012Validator(schema, registry=self._registry)
 
         # Validate and raise detailed error if validation fails
         try:
@@ -124,6 +125,35 @@ class OMEZarrValidator:
         """
         return self.validate_metadata(metadata, "label")
 
+    def iter_issues(
+        self, metadata: Dict[str, Any], schema_type: str = "ome_zarr"
+    ) -> List[Tuple[Tuple[Any, ...], str]]:
+        """Get all validation errors as structured (path, message) pairs.
+
+        Args:
+            metadata: The metadata to validate
+            schema_type: The type of schema to validate against
+
+        Returns:
+            List of (path, message) tuples, where path is the location of the
+            offending value within `metadata` as a tuple of keys/indices.
+
+        Raises:
+            ValueError: If schema type is not found
+        """
+        schema_id = f"https://ngff.openmicroscopy.org/{self.schema_version}/schemas/{schema_type}.schema"
+
+        if schema_id not in self._schemas:
+            raise ValueError(f"Schema type '{schema_type}' not found")
+
+        schema = self._schemas[schema_id]
+        validator = Draft202012Validator(schema, registry=self._registry)
+
+        return [
+            (tuple(error.absolute_path), error.message)
+            for error in validator.iter_errors(metadata)
+        ]
+
     def get_validation_errors(
         self, metadata: Dict[str, Any], schema_type: str = "ome_zarr"
     ) -> list:
@@ -136,18 +166,12 @@ class OMEZarrValidator:
         Returns:
             List of validation error messages
         """
-        schema_id = f"https://ngff.openmicroscopy.org/{self.schema_version}/schemas/{schema_type}.schema"
+        try:
+            issues = self.iter_issues(metadata, schema_type)
+        except ValueError as e:
+            return [str(e)]
 
-        if schema_id not in self._schemas:
-            return [f"Schema type '{schema_type}' not found"]
-
-        schema = self._schemas[schema_id]
-        validator = Draft202012Validator(schema, resolver=self._resolver)
-
-        errors = []
-        for error in validator.iter_errors(metadata):
-            errors.append(
-                f"Path: {' -> '.join(str(p) for p in error.absolute_path)}, Error: {error.message}"
-            )
-
-        return errors
+        return [
+            f"Path: {' -> '.join(str(p) for p in path)}, Error: {message}"
+            for path, message in issues
+        ]

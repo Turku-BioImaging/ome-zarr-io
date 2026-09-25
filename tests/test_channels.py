@@ -4,7 +4,8 @@ import dask.array as da
 import numpy as np
 import pytest
 
-from ome_zarr_io import Channel, Omero, Reader, Window, Writer, random_colors, validate
+from ome_zarr_io import Reader, Writer, random_colors, validate
+from ome_zarr_io.schema_models import Channel, Omero, Window
 from ome_zarr_io.channels import auto_contrast, normalize_color
 
 UNITS = {"z": "micrometer", "y": "micrometer", "x": "micrometer"}
@@ -143,7 +144,8 @@ def test_forms_equivalent(tmp_path):
 def test_omero_object_and_conflict(tmp_path):
     a = data()
     o = Omero(channels=[Channel(label="q"), Channel(label="r")])
-    p = make(tmp_path, a, channels=o)
+    with pytest.warns(DeprecationWarning, match="Omero object in channels"):
+        p = make(tmp_path, a, channels=o)
     assert channels_of(p)[0].label == "q"
     with pytest.raises(ValueError, match="not both"):
         Writer(
@@ -154,6 +156,19 @@ def test_omero_object_and_conflict(tmp_path):
             channels=["a", "b"],
             omero_metadata=o,
         )
+
+
+def test_omero_metadata_deprecated(tmp_path):
+    o = Omero(channels=[Channel(label="q"), Channel(label="r")])
+    with pytest.warns(DeprecationWarning, match="omero_metadata"):
+        Writer(tmp_path / "w", data(), list("czyx"), UNITS, omero_metadata=o)
+
+
+def test_top_level_omero_deprecated():
+    import ome_zarr_io
+
+    with pytest.warns(DeprecationWarning, match="ome_zarr_io.Omero"):
+        assert ome_zarr_io.Omero is Omero
 
 
 def test_no_channels_no_omero(tmp_path):

@@ -1,5 +1,6 @@
 """Main OME-Zarr writer implementation."""
 
+import warnings
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union, cast
@@ -69,7 +70,8 @@ class Writer:
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
             downscale_factor: Factor by which to downscale each level (default: 2.0).
             overwrite: Whether to overwrite existing files.
-            omero_metadata: Optional OMERO metadata for channel display configuration.
+            omero_metadata: Deprecated; use ``channels`` instead.
+                Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
             channels: Plain-Python channel description, an alternative to ``omero_metadata``.
                 A dict keyed by label (``{"DAPI": {"color": "0000FF", "window": (0, 4095)}}``),
@@ -109,6 +111,8 @@ class Writer:
 
         # Store OMERO metadata
         self.omero_metadata = omero_metadata
+        if omero_metadata is not None:
+            self._warn_omero_deprecated("omero_metadata")
         self._channel_specs: Optional[List[ChannelSpec]] = None
         self.color_seed = color_seed
         if channels is not None:
@@ -117,6 +121,15 @@ class Writer:
             self._init_channels(channels, colors)
         elif colors is not None:
             raise ValueError("colors requires channels")
+
+    @staticmethod
+    def _warn_omero_deprecated(what: str) -> None:
+        warnings.warn(
+            f"{what} is deprecated; describe channels with a dict or list via "
+            "channels=... instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
     def _init_channels(self, channels: Any, colors: Optional[str]) -> None:
         if "c" not in self.dims:
@@ -129,6 +142,7 @@ class Writer:
                 f"{n} channels given but the 'c' axis has {n_axis} entries"
             )
         if isinstance(parsed, Omero):
+            self._warn_omero_deprecated("an Omero object in channels")
             self.omero_metadata = parsed
         else:
             self._channel_specs = parsed

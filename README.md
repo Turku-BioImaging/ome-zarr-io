@@ -9,25 +9,6 @@ A Python package for reading and writing OME-Zarr 0.5 multiscale images using Nu
 
 ![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask,pytest,githubactions&theme=dark)
 
-## Installation
-
-### From source
-
-```bash
-git clone https://github.com/Turku-BioImaging/ome-zarr-writer.git
-cd ome-zarr-writer
-pip install -e .
-```
-
-### From pip requirements.txt
-
-```bash
-# Add to your requirements.txt file
-git+https://github.com/Turku-BioImaging/ome-zarr-writer.git
-
-# Then install with pip
-pip install -r requirements.txt
-```
 
 ## Usage
 
@@ -219,6 +200,26 @@ Remote URLs need `pip install "ome-zarr-io[remote]"`.
 - `"gaussian"` (default): Gaussian blur before downscaling. Use for intensity images.
 - `"nearest"`: nearest-neighbor. Preserves discrete values; use for labels and segmentation masks.
 
+## Installation
+
+### From source
+
+```bash
+git clone https://github.com/Turku-BioImaging/ome-zarr-io.git
+cd ome-zarr-writer
+pip install -e .
+```
+
+### From pip requirements.txt
+
+```bash
+# Add to your requirements.txt file
+git+https://github.com/Turku-BioImaging/ome-zarr-io.git
+
+# Then install with pip
+pip install -r requirements.txt
+```
+
 ## Development
 
 ### Setting up development environment
@@ -247,16 +248,6 @@ pytest
 # All tests + examples
 ./run_tests.sh all
 ```
-
-### Code formatting and linting
-
-```bash
-# Format and lint
-black src/ tests/ examples/
-flake8 src/ tests/
-mypy src/
-```
-
 
 ## License
 

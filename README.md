@@ -1,11 +1,38 @@
 # ome-zarr-io
 
-Read, write, and validate OME-Zarr 0.5 multiscale images
+Read, write, and validate OME-Zarr 0.5 multiscale images: from a NumPy array to a spec-compliant dataset in a few lines of Python.
 
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml)
 [![Python 3.11 | 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
+[![PyPI](https://img.shields.io/pypi/v/ome-zarr-io)](https://pypi.org/project/ome-zarr-io/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A Python package for reading and writing OME-Zarr 0.5 multiscale images using NumPy and Dask. This library provides a simple interface for creating cloud-optimized bioimaging data in the OME-Zarr 0.5 format.
+Microscopy datasets are growing faster than desktop tools can handle. [OME-Zarr](https://ngff.openmicroscopy.org/)
+is the community format for storing them in a chunked, cloud-friendly way that viewers such as napari and Vizarr
+can open. Getting the metadata exactly right is fiddly. `ome-zarr-io` handles it for you, so you can spend your
+time on the analysis instead of the file format.
+
+`ome-zarr-io` writes NumPy or Dask arrays as OME-Zarr 0.5 datasets with axes, units, pixel sizes, multiscale pyramids, channels and segmentation labels. It also reads them back and validates them against the OME-Zarr 0.5 schemas, from Python or the command line.
+
+**Quick start**
+
+```python
+import numpy as np
+from ome_zarr_io import Writer, Reader, validate
+
+image = np.random.randint(0, 255, size=(2, 16, 256, 256), dtype=np.uint8)
+
+Writer(
+    path="example.ome.zarr", image=image, dims=["c", "z", "y", "x"],
+    axis_units={"z": "micrometer", "y": "micrometer", "x": "micrometer"},
+    scale_transformations={"z": 0.5, "y": 0.2, "x": 0.2},
+    channels={"DAPI": {"color": "0000FF"}, "GFP": {"color": "00FF00"}},
+    downscale_levels=2, overwrite=True,
+).write()
+
+print(validate("example.ome.zarr"))                      # spec check
+print(Reader("example.ome.zarr").get_voxel_size())       # physical pixel size
+```
 
 ![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask,pytest,githubactions&theme=dark)
 
@@ -202,22 +229,24 @@ Remote URLs need `pip install "ome-zarr-io[remote]"`.
 
 ## Installation
 
+```bash
+pip install ome-zarr-io
+```
+
+To validate remote (URL) filesets, install the optional extra:
+
+```bash
+pip install "ome-zarr-io[remote]"
+```
+
 ### From source
+
+To get the latest development version:
 
 ```bash
 git clone https://github.com/Turku-BioImaging/ome-zarr-io.git
-cd ome-zarr-writer
+cd ome-zarr-io
 pip install -e .
-```
-
-### From pip requirements.txt
-
-```bash
-# Add to your requirements.txt file
-git+https://github.com/Turku-BioImaging/ome-zarr-io.git
-
-# Then install with pip
-pip install -r requirements.txt
 ```
 
 ## Development

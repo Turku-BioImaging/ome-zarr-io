@@ -24,7 +24,8 @@ def sample_image():
 @pytest.fixture
 def valid_fileset(tmp_path):
     """A small valid OME-Zarr fileset with two OMERO channels and one label image."""
-    from ome_zarr_io import Channel, Omero, Window, Writer
+    from ome_zarr_io import Writer
+    from ome_zarr_io.schema_models import Channel, Omero, Window
 
     path = tmp_path / "valid.ome.zarr"
     writer = Writer(

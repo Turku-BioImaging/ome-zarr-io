@@ -1,5 +1,6 @@
 """Structured validation reports for OME-Zarr 0.5 filesets."""
 
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -313,6 +314,64 @@ def _describe_channels(ome: Any) -> List[ChannelInfo]:
     ]
 
 
+def _check_channels(
+    ome: Any, axes: List[Dict[str, Any]], levels: Any
+) -> List[ValidationIssue]:
+    """Semantic OMERO checks the JSON schema does not express."""
+    omero = ome.get("omero") if isinstance(ome, dict) else None
+    channels = omero.get("channels") if isinstance(omero, dict) else None
+    if not isinstance(channels, list):
+        return []
+    issues: List[ValidationIssue] = []
+
+    def add(path: str, message: str) -> None:
+        issues.append(ValidationIssue(f"ome.omero.{path}", message, "image"))
+
+    names = [a.get("name") for a in axes]
+    if "c" not in names:
+        add("channels", "omero channels are present but there is no 'c' axis")
+    else:
+        shape = getattr(levels[0], "shape", None) if levels else None
+        c_index = names.index("c")
+        if (
+            shape is not None
+            and c_index < len(shape)
+            and shape[c_index] != len(channels)
+        ):
+            add(
+                "channels",
+                f"{len(channels)} channels described but the 'c' axis has "
+                f"{shape[c_index]} entries",
+            )
+
+    labels = [ch.get("label") for ch in channels if isinstance(ch, dict)]
+    labels = [x for x in labels if x is not None]
+    for dup in sorted({x for x in labels if labels.count(x) > 1}, key=str):
+        add("channels", f"duplicate channel label '{dup}'")
+
+    for i, ch in enumerate(channels):
+        if not isinstance(ch, dict):
+            continue
+        color = ch.get("color")
+        if isinstance(color, str) and not re.fullmatch(r"[0-9A-Fa-f]{6}", color):
+            add(
+                f"channels.{i}.color",
+                f"color '{color}' is not 6 hex digits without '#'",
+            )
+        w = ch.get("window")
+        if isinstance(w, dict):
+            try:
+                ok = w["min"] <= w["start"] <= w["end"] <= w["max"]
+            except (KeyError, TypeError):
+                continue
+            if not ok:
+                add(
+                    f"channels.{i}.window",
+                    "window must satisfy min <= start <= end <= max",
+                )
+    return issues
+
+
 def _describe_label(
     name: str,
     label_group: zarr.Group,
@@ -451,6 +510,7 @@ def validate(path: Union[str, Path], strict: bool = False) -> FilesetReport:
     report.levels, level_issues = _describe_levels(root, multiscale, "image")
     report.errors.extend(level_issues)
     report.channels = _describe_channels(ome)
+    report.errors.extend(_check_channels(ome, report.axes, report.levels))
 
     if "labels" in root:
         labels_group = root["labels"]

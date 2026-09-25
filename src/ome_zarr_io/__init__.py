@@ -13,7 +13,8 @@ from .writer import Writer
 from .validator import OMEZarrValidator
 from .reader import Reader, PhysicalSize
 from .report import FilesetReport, ValidationIssue, validate
-from .schema_models import Axis, Channel, Omero, Window
+from .channels import random_colors
+from .schema_models import Axis
 
 __all__ = [
     "Writer",
@@ -24,7 +25,21 @@ __all__ = [
     "FilesetReport",
     "ValidationIssue",
     "Axis",
-    "Channel",
-    "Window",
-    "Omero",
+    "random_colors",
 ]
+
+
+def __getattr__(name: str):
+    if name == "Omero":
+        import warnings
+
+        from .schema_models import Omero
+
+        warnings.warn(
+            "ome_zarr_io.Omero is deprecated; pass channels=... to Writer instead "
+            "(Omero remains importable from ome_zarr_io.schema_models).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return Omero
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

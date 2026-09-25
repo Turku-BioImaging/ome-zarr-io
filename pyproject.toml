@@ -74,6 +74,9 @@ packages = ["ome_zarr_io"]
 [tool.setuptools.package-dir]
 ome_zarr_io = "src/ome_zarr_io"
 
+[tool.setuptools.package-data]
+ome_zarr_io = ["spec/*/schemas/*.schema"]
+
 [tool.black]
 line-length = 88
 target-version = ['py311', 'py312', 'py313']

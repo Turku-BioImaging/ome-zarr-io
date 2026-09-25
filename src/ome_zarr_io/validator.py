@@ -26,7 +26,7 @@ class OMEZarrValidator:
     def _load_schemas(self) -> None:
         """Load all schema files and create a registry for resolving $ref links."""
         schema_path = (
-            Path(__file__).parent.parent / "spec" / self.schema_version / "schemas"
+            Path(__file__).parent / "spec" / self.schema_version / "schemas"
         )
 
         # Load all schema files

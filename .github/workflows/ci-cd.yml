@@ -19,7 +19,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -38,6 +38,46 @@ jobs:
         pytest tests/ --cov=src/ome_zarr_io --cov-report=xml
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
-        file: ./coverage.xml
+        files: ./coverage.xml
+
+  build:
+    needs: test
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Build sdist and wheel
+      run: |
+        python -m pip install --upgrade pip build twine
+        python -m build
+        twine check dist/*
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+  publish:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ome-zarr-io
+    permissions:
+      id-token: write  # required for PyPI Trusted Publishing
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1

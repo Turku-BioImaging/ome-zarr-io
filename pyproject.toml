@@ -63,16 +63,19 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Turku-BioImaging/ome-zarr-writer"
-Repository = "https://github.com/Turku-BioImaging/ome-zarr-writer"
-Documentation = "https://github.com/Turku-BioImaging/ome-zarr-writer#readme"
-"Bug Tracker" = "https://github.com/Turku-BioImaging/ome-zarr-writer/issues"
+Homepage = "https://github.com/Turku-BioImaging/ome-zarr-io"
+Repository = "https://github.com/Turku-BioImaging/ome-zarr-io"
+Documentation = "https://github.com/Turku-BioImaging/ome-zarr-io"
+"Bug Tracker" = "https://github.com/Turku-BioImaging/ome-zarr-io/issues"
 
 [tool.setuptools]
 packages = ["ome_zarr_io"]
 
 [tool.setuptools.package-dir]
 ome_zarr_io = "src/ome_zarr_io"
+
+[tool.setuptools.package-data]
+ome_zarr_io = ["spec/*/schemas/*.schema"]
 
 [tool.black]
 line-length = 88

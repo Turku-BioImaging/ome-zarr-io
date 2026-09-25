@@ -95,9 +95,20 @@ writer = Writer(
 )
 ```
 
-Colors are hex without "#". Each window's `min`/`max` are the data's min/max; without `window`, `start`/`end`
-follow Fiji's auto-contrast (`"minmax"` uses the full range). `Omero(...)` objects are still accepted via
-`omero_metadata=`.
+`channels` accepts a dict keyed by label, a list of labels, or a list of dicts, and requires a `c` axis with one
+entry per channel. Per-channel keys:
+
+- `color`: hex without "#", or `"random"`
+- `window`: `"auto"` (default), `"minmax"`, `(start, end)`, a `Window`, or `None`
+- `family` and `active`
+
+Each window's `min`/`max` are the data's min/max; with `"auto"`, `start`/`end` follow Fiji's auto-contrast
+(`"minmax"` uses the full range). `colors="random"` gives every channel without a color a distinct one
+(`color_seed=...` changes the palette); `ome_zarr_io.random_colors(n, seed=0)` exposes the same generator.
+
+`Omero(...)` objects, `omero_metadata=`, and the top-level `Channel`/`Window`/`Omero` exports are deprecated or
+removed from `ome_zarr_io`. Passing `omero_metadata=` (or an `Omero` in `channels=`) emits a `DeprecationWarning`;
+use `channels=` instead. `Channel`, `Window` and `Omero` remain importable from `ome_zarr_io.schema_models`.
 
 ### Adding labels to an existing OME-Zarr 0.5 fileset
 

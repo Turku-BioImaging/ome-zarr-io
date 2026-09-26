@@ -73,9 +73,9 @@ writer = Writer(
     dims=dims,
     axis_units=axis_units,
     scale_transformations=scale_transformations,
-    downscale_method='gaussian',  # Use Gaussian filtering for intensity images
+    downscale_method='mean',  # Block average; use 'nearest' for label images
     downscale_levels=3,  # Create 3 additional downscale levels
-    downscale_factor=2,
+    downscale_factor=2,  # Integer >= 2; each level is 2x smaller in Y/X
     overwrite=True
 )
 
@@ -224,8 +224,13 @@ Remote URLs need `pip install "ome-zarr-io[remote]"`.
 
 ## Downscaling Methods
 
-- `"gaussian"` (default): Gaussian blur before downscaling. Use for intensity images.
-- `"nearest"`: nearest-neighbor. Preserves discrete values; use for labels and segmentation masks.
+Level `L` of the pyramid is `downscale_factor ** L` times smaller than the original in Y and X
+(`downscale_factor` must be an integer >= 2; default `2`). Pixels that don't fill a whole block at
+the bottom/right edge are dropped at coarser levels.
+
+- `"mean"` (default): averages each block of pixels (a box filter followed by subsampling). Use for intensity images.
+- `"nearest"`: takes one pixel per block. Preserves discrete values; use for labels and segmentation masks.
+- `"gaussian"`: deprecated alias for `"mean"`.
 
 ## Installation
 
@@ -265,18 +270,6 @@ This will:
 - Install development dependencies
 - Set up pre-commit hooks
 
-### Running tests
-
-```bash
-# Basic tests
-pytest
-
-# With coverage
-./run_tests.sh cov
-
-# All tests + examples
-./run_tests.sh all
-```
 
 ## License
 

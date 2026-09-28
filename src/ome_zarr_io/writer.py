@@ -38,10 +38,10 @@ class Writer:
         image: Union[da.Array, np.ndarray],
         dims: List[str],
         axis_units: Union[List[Axis], Dict[str, Any]],
-        downscale_method: Literal["gaussian", "nearest"] = "gaussian",
+        downscale_method: Literal["mean", "nearest", "gaussian"] = "mean",
         scale_transformations: Optional[Dict[str, Any]] = None,
         downscale_levels: Optional[int] = None,
-        downscale_factor: float = 2.0,
+        downscale_factor: int = 2,
         overwrite: bool = False,
         omero_metadata: Optional[Omero] = None,
         channels: Optional[Union[Dict[str, Any], List[Any], Omero]] = None,
@@ -58,9 +58,10 @@ class Writer:
                 of dimensions of the input image, or a dictionary that specifies units for each
                 dimension. Dictionary format:
                 - Per-dimension units: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
-            downscale_method: Method to use for downscaling. Either Gaussian filter or nearest-neighbor interpolation;
-            default "gaussian". Use Gaussian filtering for intensity images to avoid aliasing artifacts in downscaled images.
-            Label images should be downscaled using nearest-neighbor interpolation.
+            downscale_method: Method to use for downscaling; default "mean". "mean" averages each
+                block of pixels (a box filter followed by subsampling, also called area
+                downsampling) and is intended for intensity images. "nearest" takes one pixel per
+                block and should be used for label images. "gaussian" is a deprecated alias for "mean".
             scale_transformations: Optional dictionary specifying scale values for dimensions.
                 Examples:
                 - {"z": 0.25, "y": 0.1, "x": 0.1} for spatial dimensions
@@ -68,7 +69,8 @@ class Writer:
                 Units are determined by the axis_units parameter. Scale values will be
                 automatically adjusted for each downscale level.
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
-            downscale_factor: Factor by which to downscale each level (default: 2.0).
+            downscale_factor: Integer factor (>= 2) by which each level is downscaled relative
+                to the previous one (default: 2).
             overwrite: Whether to overwrite existing files.
             omero_metadata: Deprecated; use ``channels`` instead.
                 Optional OMERO metadata for channel display configuration.
@@ -153,15 +155,15 @@ class Writer:
         return self.downscaler.downscale_levels
 
     @property
-    def downscale_factor(self) -> float:
+    def downscale_factor(self) -> int:
         """Get the downscale factor from the downscaler."""
         return self.downscaler.downscale_factor
 
     @property
-    def downscale_method(self) -> Literal["gaussian", "nearest"]:
+    def downscale_method(self) -> Literal["mean", "nearest"]:
         """Get the downscale method from the downscaler."""
 
-        return cast(Literal["gaussian", "nearest"], self.downscaler.downscale_method)
+        return cast(Literal["mean", "nearest"], self.downscaler.downscale_method)
 
     def _create_downscaled_arrays(self) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.
@@ -189,8 +191,18 @@ class Writer:
         """
 
         return self.downscaler.create_coordinate_transformations_for_levels(
-            self.coordinate_transformations
+            self._base_scale_transformations()
         )
+
+    def _base_scale_transformations(self) -> List[ScaleTransformation]:
+        """Level-0 scale transformations; unit scale if none were provided.
+
+        Downscaled levels are derived from these, so even without user-provided
+        pixel sizes each level's Y/X scale reflects its size relative to level 0.
+        """
+        if self.coordinate_transformations is not None:
+            return self.coordinate_transformations
+        return [ScaleTransformation(scale=[1.0] * len(self.dims))]
 
     def _process_axis_units(
         self,
@@ -400,9 +412,9 @@ class Writer:
         properties: Optional[List[Dict[str, Any]]] = None,
         source_image: str = "../../",
         overwrite: bool = False,
-        downscale_method: Optional[Literal["gaussian", "nearest"]] = "nearest",
+        downscale_method: Optional[Literal["mean", "nearest", "gaussian"]] = "nearest",
         downscale_levels: Optional[int] = None,
-        downscale_factor: Optional[float] = None,
+        downscale_factor: Optional[int] = None,
         chunks: Optional[Union[int, tuple, str]] = None,
         shards: Optional[Union[int, tuple]] = None,
         compressors: Optional[CompressorsLike] = None,
@@ -489,14 +501,13 @@ class Writer:
         )
         label_arrays = scaler.create_downscaled_arrays(da.asarray(label_array))
 
+        # Base scale/axes come from the parent image; the per-level multiplier uses
+        # the label's own downscale factor.
         label_level_transformations = (
-            self._create_coordinate_transformations_for_levels()
+            scaler.create_coordinate_transformations_for_levels(
+                self._base_scale_transformations()
+            )
         )
-        if not label_level_transformations:
-            label_level_transformations = [
-                [ScaleTransformation(scale=[1.0] * len(self.dims))]
-                for _ in range(len(label_arrays))
-            ]
 
         datasets = []
         for level, level_array in enumerate(label_arrays):
@@ -515,10 +526,7 @@ class Writer:
             zarr_array = label_group.create_array(**zarr_kwargs)
             zarr_array[:] = np.asarray(level_array)  # type: ignore
 
-            if level < len(label_level_transformations):
-                transformations = label_level_transformations[level]
-            else:
-                transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
+            transformations = label_level_transformations[level]
 
             dataset = Dataset(
                 path=str(level),
@@ -640,11 +648,7 @@ class Writer:
                 level0 = data
 
             # Get coordinate transformations for this level
-            if level_transformations and level < len(level_transformations):
-                transformations = level_transformations[level]
-            else:
-                # Create default scale transformation if none provided
-                transformations = [ScaleTransformation(scale=[1.0] * len(self.dims))]
+            transformations = level_transformations[level]
 
             # Create dataset metadata
             dataset = Dataset(

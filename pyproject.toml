@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ome-zarr-io"
-version = "0.7.0"
+version = "0.8.0"
 description = "Write, read, and validate OME-Zarr 0.5 multiscale images"
 readme = "README.md"
 license = "MIT"
@@ -32,10 +32,8 @@ keywords = ["ome", "zarr", "image", "microscopy", "bioimage"]
 requires-python = ">=3.11"
 dependencies = [
     "dask",
-    "dask-image",
     "jsonschema>=4.18.0",
     "numpy>=1.20.0",
-    "scikit-image",
     "zarr>=3,<4"
 ]
 

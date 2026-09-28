@@ -1,40 +1,66 @@
 """Downscaling functionality for OME-Zarr multiscale pyramids."""
 
-from typing import List, Literal, Optional
+import warnings
+from typing import Any, List, Literal, Optional
 
 import dask.array as da
-import dask_image.ndfilters
 import numpy as np
-from skimage.transform import rescale
 
 from .schema_models import ScaleTransformation
+
+
+def _validate_downscale_factor(downscale_factor: Any) -> int:
+    """Return ``downscale_factor`` as an int, or raise if it is not an integer >= 2.
+
+    Integral floats (e.g. ``2.0``) are accepted for backward compatibility.
+    """
+    valid = (
+        isinstance(downscale_factor, (int, float, np.integer, np.floating))
+        and float(downscale_factor).is_integer()
+        and downscale_factor >= 2
+    )
+    if not valid:
+        raise ValueError(
+            f"downscale_factor must be an integer >= 2, got {downscale_factor!r}"
+        )
+    return int(downscale_factor)
 
 
 class Downscaler:
     """Handles downscaling operations for creating multiscale image pyramids.
 
-    This class is responsible for creating downscaled versions of image arrays
-    using different interpolation methods (Gaussian filtering or nearest-neighbor)
-    and managing coordinate transformations for each resolution level.
+    Level ``L`` of the pyramid is ``downscale_factor ** L`` times smaller than the
+    original image in Y and X. Intensity images are downscaled by averaging each
+    block of pixels ("mean"); label images by taking one pixel per block
+    ("nearest"), which preserves discrete label values.
     """
 
     def __init__(
         self,
-        downscale_factor: float = 2.0,
-        downscale_method: Literal["gaussian", "nearest"] = "gaussian",
+        downscale_factor: int = 2,
+        downscale_method: Literal["mean", "nearest", "gaussian"] = "mean",
         downscale_levels: Optional[int] = None,
     ):
         """Initialize the downscaler.
 
         Args:
-            downscale_factor: Factor by which to downscale each level (default: 2.0).
-            downscale_method: Method to use for downscaling ("gaussian" or "nearest").
+            downscale_factor: Integer factor (>= 2) by which each level is downscaled
+                relative to the previous one (default: 2).
+            downscale_method: "mean" (block average, i.e. a box filter followed by
+                subsampling; for intensity images) or
+                "nearest" (for label images). "gaussian" is a deprecated alias for "mean".
             downscale_levels: Number of downscale levels to create. If None, no downscaling.
         """
-        if downscale_factor <= 1.0:
-            raise ValueError(f"downscale_factor must be > 1.0, got {downscale_factor}")
+        self.downscale_factor = _validate_downscale_factor(downscale_factor)
 
-        self.downscale_factor = downscale_factor
+        if downscale_method == "gaussian":
+            warnings.warn(
+                'downscale_method="gaussian" is deprecated; use "mean" instead.',
+                DeprecationWarning,
+                # Downscaler is created by Writer; point at the user's Writer call.
+                stacklevel=3,
+            )
+            downscale_method = "mean"
         self.downscale_method = downscale_method
         self.downscale_levels = downscale_levels
 
@@ -53,41 +79,21 @@ class Downscaler:
         # Get the size of the smallest spatial dimension (Y and X are last two)
         min_spatial_dim = min(image_shape[-2], image_shape[-1])
 
-        # Calculate maximum possible levels
+        # Calculate maximum possible levels (each level must be at least 1 pixel)
         max_levels = 0
-        test_size = min_spatial_dim
-        while test_size >= self.downscale_factor:
-            test_size = test_size / self.downscale_factor
+        test_size = min_spatial_dim // self.downscale_factor
+        while test_size >= 1:
             max_levels += 1
+            test_size //= self.downscale_factor
 
         if self.downscale_levels > max_levels:
-            import warnings
-
-            suggested_levels = max_levels
-            suggested_factor = self.downscale_factor
-
-            # Try to find a smaller factor that would work
-            for factor in [1.5, 1.25, 1.1]:
-                if factor >= self.downscale_factor:
-                    continue
-                test_levels = 0
-                test_size = min_spatial_dim
-                while test_size >= factor:
-                    test_size = test_size / factor
-                    test_levels += 1
-                if test_levels >= self.downscale_levels:
-                    suggested_factor = factor
-                    break
-
-            warning_msg = (
-                f"Requested {self.downscale_levels} downscale levels with factor {self.downscale_factor} "
-                f"is too many for image with spatial dimensions {image_shape[-2:]}. "
-                f"Maximum possible levels: {max_levels}. "
-                f"Suggestions: reduce downscale_levels to {suggested_levels} "
-                f"or reduce downscale_factor to {suggested_factor}."
+            warnings.warn(
+                f"Requested {self.downscale_levels} downscale levels with factor "
+                f"{self.downscale_factor} is too many for image with spatial "
+                f"dimensions {image_shape[-2:]}. Using the maximum possible "
+                f"number of levels: {max_levels}.",
+                UserWarning,
             )
-            warnings.warn(warning_msg, UserWarning)
-
             return max_levels
 
         return self.downscale_levels
@@ -95,11 +101,14 @@ class Downscaler:
     def create_downscaled_arrays(self, image: da.Array) -> List[da.Array]:
         """Create downscaled arrays for multiscale representation.
 
-        Creates a list of dask arrays where each subsequent array is downscaled
-        by the specified downscale_factor in the spatial dimensions (Y and X axes),
-        while preserving all other dimensions (time, channel, Z). The downscaling
-        method (Gaussian filtering or nearest-neighbor) is determined by the
-        downscale_method parameter set during initialization.
+        Creates a list of dask arrays where level ``L`` is downscaled by
+        ``downscale_factor ** L`` in the spatial dimensions (Y and X axes), while
+        preserving all other dimensions (time, channel, Z). Each level is computed
+        directly from the original image; for block averaging and striding this
+        gives the same result as downscaling the previous level.
+
+        Spatial sizes are ``floor(size / downscale_factor ** L)``: pixels that do
+        not fill a whole block at the bottom/right edge are dropped.
 
         Args:
             image: The input dask array to downscale.
@@ -110,142 +119,61 @@ class Downscaler:
             is determined by downscale_levels parameter, validated against the
             minimum spatial dimension of the input image.
         """
-        # Validate downscale levels
         validated_levels = self.validate_downscale_levels(image.shape)
-
-        if validated_levels <= 0:
-            return [image]
 
         arrays = [image]  # Level 0: original resolution
 
-        for i in range(1, validated_levels + 1):
-            scale_factor = 1 / (self.downscale_factor * i)
-
-            # Check if Y or X dimensions are too small to downscale further
-            if image.shape[-2] * scale_factor < 1 or image.shape[-1] * scale_factor < 1:
-                break
-
-            # Get the downscaled array
-            downscaled: da.Array = (
-                self._downscale_gaussian(image, scale_factor=scale_factor)
-                if self.downscale_method == "gaussian"
-                else self._downscale_nearest(image, scale_factor=scale_factor)
+        for level in range(1, validated_levels + 1):
+            block = self.downscale_factor**level
+            downscaled = (
+                self._downscale_nearest(image, block)
+                if self.downscale_method == "nearest"
+                else self._downscale_mean(image, block)
             )
-
             arrays.append(downscaled)
 
         return arrays
 
-    def __rescale_yx_block(
-        self, block: np.ndarray, order: int, scale_factor: float
-    ) -> np.ndarray:
-        """Rescale only Y and X dimensions of a block.
+    @staticmethod
+    def _downscale_mean(image: da.Array, block: int) -> da.Array:
+        """Average each ``block`` x ``block`` tile of the Y/X dimensions.
+
+        Equivalent to a ``block`` x ``block`` box filter followed by taking every
+        ``block``-th pixel (box / area downsampling).
 
         Args:
-            block: Input numpy array to rescale.
-            order: Interpolation order (0=nearest-neighbor, 1=bilinear, 3=bicubic).
-            scale_factor: Scaling factor to apply to Y and X dimensions.
+            image: Input dask array.
+            block: Block edge length in pixels.
 
         Returns:
-            Rescaled array with same dtype as input.
+            Downscaled dask array with the same dtype as the input.
         """
-        # Create scale factors: 1 for all dimensions except last two
-        scale_factors = [1.0] * block.ndim
-        scale_factors[-2] = scale_factor  # Y dimension
-        scale_factors[-1] = scale_factor  # X dimension
-
-        rescaled: np.ndarray = rescale(
-            block,
-            scale=scale_factors,
-            order=order,
-            preserve_range=True,
-            anti_aliasing=False,  # Already applied Gaussian filter
-            channel_axis=None,
-        ).astype(block.dtype)
-
-        return rescaled
-
-    def _downscale_gaussian(
-        self,
-        original_array: da.Array,
-        scale_factor: float,
-    ) -> da.Array:
-        """Apply Gaussian filtering followed by downscaling.
-
-        Args:
-            original_array: Input dask array to downscale.
-            scale_factor: Scaling factor to apply to Y and X dimensions.
-
-        Returns:
-            Downscaled dask array with Gaussian anti-aliasing applied.
-        """
-        # Apply Gaussian filter before downscaling to prevent aliasing.
-        # Use sigma=1 for Y and X dimensions. Other dimensions have sigma=0 (no filtering).
-        sigma = [0.0] * original_array.ndim
-        sigma[-2] = 1
-        sigma[-1] = 1
-
-        filtered_array = dask_image.ndfilters.gaussian_filter(
-            original_array, sigma=sigma, mode="nearest"
+        averaged: da.Array = da.coarsen(
+            np.mean,
+            image,
+            {image.ndim - 2: block, image.ndim - 1: block},
+            trim_excess=True,
         )
-
-        # Calculate new chunk sizes (also downscaled for Y and X dimensions)
-        # Use round() to match how rescale calculates output shape
-        new_chunks = list(filtered_array.chunks)
-        for dim in [-2, -1]:
-            new_chunks[dim] = tuple(
-                max(1, round(chunk_size * scale_factor))
-                for chunk_size in new_chunks[dim]
-            )
-
-        downscaled: da.Array = da.map_blocks(
-            self.__rescale_yx_block,
-            filtered_array,
-            dtype=filtered_array.dtype,
-            chunks=new_chunks,
-            drop_axis=None,
-            new_axis=None,
-            meta=np.array([], dtype=filtered_array.dtype),
-            order=1,  # use bicubic interpolation on Gaussian-filtered data
-            scale_factor=scale_factor,
-        )
-
+        if np.issubdtype(image.dtype, np.integer):
+            averaged = da.rint(averaged)
+        downscaled: da.Array = averaged.astype(image.dtype)
         return downscaled
 
-    def _downscale_nearest(
-        self, original_array: da.Array, scale_factor: float
-    ) -> da.Array:
-        """Apply nearest-neighbor downscaling.
+    @staticmethod
+    def _downscale_nearest(image: da.Array, block: int) -> da.Array:
+        """Take the top-left pixel of each ``block`` x ``block`` tile of Y/X.
 
         Args:
-            original_array: Input dask array to downscale.
-            scale_factor: Scaling factor to apply to Y and X dimensions.
+            image: Input dask array.
+            block: Block edge length in pixels.
 
         Returns:
-            Downscaled dask array using nearest-neighbor interpolation.
+            Downscaled dask array; values are a subset of the input's values.
         """
-        # Calculate new chunk sizes (also downscaled for Y and X dimensions)
-        # Use round() to match how rescale calculates output shape
-        new_chunks = list(original_array.chunks)
-        for dim in [-2, -1]:
-            new_chunks[dim] = tuple(
-                max(1, round(chunk_size * scale_factor))
-                for chunk_size in new_chunks[dim]
-            )
-
-        downscaled: da.Array = da.map_blocks(
-            self.__rescale_yx_block,
-            original_array,
-            dtype=original_array.dtype,
-            chunks=tuple(new_chunks),
-            drop_axis=None,
-            new_axis=None,
-            meta=np.array([], dtype=original_array.dtype),
-            order=0,  # nearest-neighbor interpolation,
-            scale_factor=scale_factor,
-        )
-
-        return downscaled
+        height = (image.shape[-2] // block) * block
+        width = (image.shape[-1] // block) * block
+        strided: da.Array = image[..., :height:block, :width:block]
+        return strided
 
     def create_coordinate_transformations_for_levels(
         self,
@@ -274,7 +202,7 @@ class Downscaler:
         # Create coordinate transformations for each level
         all_transformations = []
 
-        num_downscale_levels = self.downscale_levels or 0
+        num_downscale_levels = max(0, self.downscale_levels or 0)
 
         for level in range(num_downscale_levels + 1):
             level_transformations = []
@@ -285,7 +213,7 @@ class Downscaler:
 
                 # The last two dimensions are always Y, X in our schema
                 # Multiply by downscale_factor^level for these dimensions
-                scale_factor = self.downscale_factor ** level
+                scale_factor = self.downscale_factor**level
                 new_scale[-2] *= scale_factor  # Y dimension
                 new_scale[-1] *= scale_factor  # X dimension
 

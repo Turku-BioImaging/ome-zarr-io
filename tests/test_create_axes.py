@@ -113,6 +113,13 @@ class TestCreateAxes:
         assert all(ax.unit == "nanometer" for ax in axes)
         validate_tczyx_axis_ordering(axes)
 
+    def test_create_axes_pixel_unit(self):
+        """Test creating axes with the non-standard "pixel" unit."""
+        with pytest.warns(UserWarning, match="pixel"):
+            axes = create_axes("yx", 1.0, 1.0, unit="pixel")
+
+        assert all(ax.unit == "pixel" for ax in axes)
+
     def test_create_axes_case_insensitive(self):
         """Test that axes string is case insensitive."""
         axes1 = create_axes("YX", 0.1, 0.1)

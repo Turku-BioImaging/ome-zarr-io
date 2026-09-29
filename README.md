@@ -56,8 +56,11 @@ axis_units = {
     "z": "micrometer",
     "y": "micrometer",
     "x": "micrometer"
-    # Note: 'c' (channel) dimension doesn't need a unit
 }
+
+# Units should be one of the OME-Zarr 0.5 recommended names (e.g. "micrometer").
+# "pixel" is also accepted for uncalibrated images, but is not in the spec's list
+# and emits a UserWarning.
 
 # Define scale transformations (pixel/voxel sizes)
 # Units are determined by axis_units above
@@ -254,27 +257,3 @@ cd ome-zarr-io
 pip install -e .
 ```
 
-## Development
-
-### Setting up development environment
-
-```bash
-git clone https://github.com/Turku-BioImaging/ome-zarr-io.git
-cd ome-zarr-io
-./setup-dev.sh
-```
-
-This will:
-- Create a virtual environment
-- Install the package in development mode
-- Install development dependencies
-- Set up pre-commit hooks
-
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-This package builds upon the excellent work of the [zarr-python](https://github.com/zarr-developers/zarr-python) community.

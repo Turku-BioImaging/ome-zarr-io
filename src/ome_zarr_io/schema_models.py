@@ -5,6 +5,7 @@ These dataclasses provide a type-safe way to construct and validate
 OME-Zarr metadata that conforms to the official image.schema specification.
 """
 
+import warnings
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union
 from enum import Enum
@@ -83,6 +84,11 @@ VALID_SPACE_UNITS = {
     "zettameter",
 }
 
+# Space units outside the spec's recommended list that are still accepted (with a
+# warning). The spec only says a unit SHOULD be one of the listed strings, and
+# "pixel" is needed for images without calibrated physical sizes.
+NON_STANDARD_SPACE_UNITS = {"pixel"}
+
 # Valid units for time axes according to OME-Zarr specification
 VALID_TIME_UNITS = {
     "attosecond",
@@ -131,7 +137,14 @@ class Axis:
 
             # For space axes, validate unit if provided
             if self.type == "space" and self.unit is not None:
-                if self.unit not in VALID_SPACE_UNITS:
+                if self.unit in NON_STANDARD_SPACE_UNITS:
+                    warnings.warn(
+                        f"Unit '{self.unit}' is not in the OME-Zarr 0.5 list of "
+                        "recommended space units; some readers may not recognize it.",
+                        UserWarning,
+                        stacklevel=3,
+                    )
+                elif self.unit not in VALID_SPACE_UNITS:
                     raise ValueError(
                         f"Invalid unit '{self.unit}' for space axis. "
                         f"Valid units are: {', '.join(sorted(VALID_SPACE_UNITS))}"

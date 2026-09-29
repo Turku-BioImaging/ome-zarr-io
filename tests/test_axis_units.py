@@ -226,3 +226,41 @@ class TestAxisUnits:
                 axis_units=axis_units,
                 overwrite=True,
             )
+
+    # "pixel" is accepted as a non-standard spatial unit, with a warning.
+
+    def test_pixel_space_axis_warns(self):
+        with pytest.warns(UserWarning, match="pixel"):
+            axis = Axis(name="x", type="space", unit="pixel")
+        assert axis.unit == "pixel"
+
+    def test_pixel_time_axis_rejected(self):
+        with pytest.raises(ValueError, match="Invalid unit 'pixel' for time axis"):
+            Axis(name="t", type="time", unit="pixel")
+
+    def test_unknown_space_unit_still_rejected(self):
+        with pytest.raises(ValueError, match="Invalid unit 'bogus' for space axis"):
+            Axis(name="x", type="space", unit="bogus")
+
+    def test_pixel_roundtrip_with_downscaling(self, tmp_path):
+        from ome_zarr_io.reader import Reader
+
+        image = np.random.randint(0, 255, size=(64, 64), dtype=np.uint8)
+        path = tmp_path / "pixel.zarr"
+        with pytest.warns(UserWarning, match="pixel"):
+            writer = Writer(
+                path=path,
+                image=image,
+                dims=["y", "x"],
+                axis_units={"y": "pixel", "x": "pixel"},
+                scale_transformations={"y": 1.0, "x": 1.0},
+                downscale_levels=2,
+                overwrite=True,
+            )
+            writer.write()
+
+        with pytest.warns(UserWarning, match="pixel"):
+            reader = Reader(path)
+            assert all(a.unit == "pixel" for a in reader.axes)
+            assert reader.get_physical_size(0)["x"].unit == "pixel"
+        assert reader.get_physical_size(2)["x"].value == 4.0

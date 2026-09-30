@@ -7,6 +7,7 @@ from pathlib import Path
 import copy
 import zarr
 from ome_zarr_io.writer import Writer
+from ome_zarr_io.reader import Reader
 from ome_zarr_io.schema_models import ScaleTransformation
 
 
@@ -288,3 +289,43 @@ def test_multiple_writes_preserve_config(temp_dir, sample_2d_image):
     )
     writer2.write()
     assert zarr.config.get("codec_pipeline") == baseline
+
+
+def test_add_labels_singleton_channel_axis(temp_dir):
+    """A label with c=1 is valid for a multi-channel image (NGFF 0.5)."""
+    path = temp_dir / "test.zarr"
+    writer = Writer(
+        path=path,
+        image=np.zeros((2, 3, 4, 32, 32), dtype=np.uint16),
+        dims=["t", "c", "z", "y", "x"],
+        axis_units={"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"},
+        downscale_levels=2,
+    )
+    writer.write()
+    writer.add_labels(name="ch0", array=np.zeros((2, 1, 4, 32, 32), dtype=np.uint8))
+
+    label_group = zarr.open_group(str(path), mode="r")["labels"]["ch0"]
+    datasets = label_group.attrs["ome"]["multiscales"][0]["datasets"]
+    assert [label_group[d["path"]].shape for d in datasets] == [
+        (2, 1, 4, 32, 32),
+        (2, 1, 4, 16, 16),
+        (2, 1, 4, 8, 8),
+    ]
+    assert Reader(path).validate()
+
+
+def test_add_labels_rejects_incompatible_shapes(temp_dir):
+    path = temp_dir / "test.zarr"
+    writer = Writer(
+        path=path,
+        image=np.zeros((3, 4, 32, 32), dtype=np.uint16),
+        dims=["c", "z", "y", "x"],
+        axis_units={"z": "micrometer", "y": "micrometer", "x": "micrometer"},
+    )
+    writer.write()
+    with pytest.raises(ValueError, match="axis 'c' must be 3 or 1"):
+        writer.add_labels(name="a", array=np.zeros((2, 4, 32, 32), dtype=np.uint8))
+    with pytest.raises(ValueError, match="axis 'x' must be 32"):
+        writer.add_labels(name="b", array=np.zeros((3, 4, 32, 1), dtype=np.uint8))
+    with pytest.raises(ValueError, match="dimensions"):
+        writer.add_labels(name="c", array=np.zeros((4, 32, 32), dtype=np.uint8))

@@ -430,7 +430,9 @@ class Writer:
 
         Args:
             name: Name of the label image as it will appear under the parent labels group.
-            array: Label array to attach. Should match the source image shape.
+            array: Label array to attach. Must have the same dimensions as the source
+                image; each non-spatial axis (e.g. c, z, t) may have size 1 instead of
+                the image's size, per the NGFF spec. Y/X must match the image.
             colors: Optional list of {"label-value": ..., "rgba": [...]} entries.
             properties: Optional list of label metadata entries.
             source_image: Relative path from the label image group to the source image group.
@@ -466,9 +468,21 @@ class Writer:
                 f"Label array dimensions ({label_array.ndim}) do not match source image dimensions ({len(self.dims)})"
             )
 
-        if label_array.shape != self.image.shape:
+        # NGFF 0.5: each label dimension must equal the image's, or be 1 if that
+        # dimension is irrelevant to the label (e.g. a mask for a single channel).
+        # Y/X must match: they define the pyramid and the coordinate system.
+        for axis, (label_size, image_size) in enumerate(
+            zip(label_array.shape, self.image.shape)
+        ):
+            if label_size == image_size:
+                continue
+            if label_size == 1 and axis < label_array.ndim - 2:
+                continue
             raise ValueError(
-                f"Label array shape {label_array.shape} does not match source image shape {self.image.shape}"
+                f"Label array shape {label_array.shape} is incompatible with source "
+                f"image shape {self.image.shape} (dims {self.dims}): axis "
+                f"'{self.dims[axis]}' must be {image_size}"
+                + (" or 1" if axis < label_array.ndim - 2 else "")
             )
 
         root_group = zarr.open_group(str(self.path), mode="a")

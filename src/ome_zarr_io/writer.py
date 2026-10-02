@@ -47,6 +47,7 @@ class Writer:
         channels: Optional[Union[Dict[str, Any], List[Any], Omero]] = None,
         colors: Optional[Literal["random"]] = None,
         color_seed: int = 0,
+        name: Optional[str] = None,
     ):
         """Initialize the OME-Zarr writer.
 
@@ -84,6 +85,8 @@ class Writer:
                 auto-contrast. Requires a "c" axis with one entry per channel.
             colors: "random" assigns a distinct color to every channel without one.
             color_seed: Changes the automatic palette; the same seed gives the same colors.
+            name: Name stored in the multiscale metadata. Defaults to the file name
+                of ``path`` without its extension.
             zarr_backend: Zarr backend to use for writing. Either "zarr-python" or "zarrs"
                 (default: "zarrs").
         """
@@ -95,6 +98,7 @@ class Writer:
             self.image = image
         self.dims = dims
         self.overwrite = overwrite
+        self.name = name
 
         # Process and validate axis_units
         self.axes = self._process_axis_units(axis_units, dims, self.image.shape)
@@ -678,7 +682,7 @@ class Writer:
         multiscale = Multiscale(
             datasets=datasets,
             axes=self.axes,
-            name=self.path.stem,  # Use filename as name
+            name=self.name if self.name is not None else self.path.stem,
         )
 
         omero = self.omero_metadata

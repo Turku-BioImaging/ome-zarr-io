@@ -39,6 +39,7 @@ class PlateWriter:
         name: Optional[str] = None,
         acquisitions: Optional[List[Dict[str, Any]]] = None,
         overwrite: bool = False,
+        check_consistency: bool = True,
     ):
         """Create the plate's root group.
 
@@ -53,7 +54,12 @@ class PlateWriter:
                 ``starttime``, ``endtime`` optional). ``add_field(acquisition=...)``
                 must refer to one of these ids.
             overwrite: Whether to replace an existing plate at ``path``.
+            check_consistency: Require every field to match the first one in dims,
+                axes and channels (count and labels). The spec allows mixed fields,
+                but that is almost always a mistake; pass ``False`` to allow it.
         """
+        self.check_consistency = check_consistency
+        self._reference: Optional[Tuple[Tuple[str, ...], list, list]] = None
         self.path = Path(path)
         self.rows = self._check_names(rows, "row")
         self.columns = self._check_names(columns, "column")
@@ -145,7 +151,7 @@ class PlateWriter:
                     f"{[a['id'] for a in self.acquisitions]}"
                 )
 
-        images = self._wells.setdefault((row, column), [])
+        images = self._wells.get((row, column), [])
         used = {img["path"] for img in images}
         if field is None:
             field = len(images)
@@ -156,21 +162,62 @@ class PlateWriter:
         if str(field) in used:
             raise ValueError(f"field {field} already exists in well {row}/{column}")
 
-        well_group = self._root.require_group(row).require_group(column)
+        # Build the Writer first: it validates the arguments, so a bad call
+        # leaves no empty row/well groups behind.
         field_path = self.path / row / column / str(field)
+        writer_kwargs.setdefault("name", f"{row}/{column}/{field}")
         writer = Writer(field_path, image, dims, axis_units, **writer_kwargs)
+        if self.check_consistency:
+            self._check_consistent(writer, f"{row}/{column}/{field}")
+
+        well_group = self._root.require_group(row).require_group(column)
         writer.write()
+        if self._reference is None:
+            self._reference = self._signature(writer)
 
         entry: Dict[str, Any] = {"path": str(field)}
         if acquisition is not None:
             entry["acquisition"] = acquisition
         images.append(entry)
+        self._wells[(row, column)] = images
 
         well_group.attrs.update(
             {"ome": {"version": "0.5", "well": {"images": list(images)}}}
         )
         self._write_plate_metadata()
         return writer
+
+    @staticmethod
+    def _signature(writer: Writer) -> Tuple[Tuple[str, ...], list, list]:
+        """The parts of a field that should be identical across a plate."""
+        labels: list = []
+        if writer._channel_specs is not None:
+            labels = [c.label for c in writer._channel_specs]
+        elif writer.omero_metadata is not None:
+            labels = [c.label for c in writer.omero_metadata.channels]
+        n_channels = writer.image.shape[writer.dims.index("c")] if "c" in writer.dims else 0
+        return tuple(writer.dims), list(writer.axes), [n_channels, labels]
+
+    def _check_consistent(self, writer: Writer, where: str) -> None:
+        if self._reference is None:
+            return
+        dims, axes, channels = self._signature(writer)
+        ref_dims, ref_axes, ref_channels = self._reference
+        problems = []
+        if dims != ref_dims:
+            problems.append(f"dims {list(dims)} != {list(ref_dims)}")
+        elif axes != ref_axes:
+            problems.append(f"axes {axes} != {ref_axes}")
+        if channels != ref_channels:
+            problems.append(
+                f"channels (count, labels) {channels} != {ref_channels}"
+            )
+        if problems:
+            raise ValueError(
+                f"field {where} is inconsistent with the first field of the plate: "
+                + "; ".join(problems)
+                + " (pass check_consistency=False to allow this)"
+            )
 
     def _write_plate_metadata(self) -> None:
         wells = [

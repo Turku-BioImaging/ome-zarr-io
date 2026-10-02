@@ -187,6 +187,8 @@ with PlateWriter(
 - Rows and columns are declared up front. Their order sets each well's `rowIndex` and `columnIndex`.
 - `add_field` takes the same keyword arguments as `Writer` (except `overwrite`, which belongs to the plate). It creates
   the row and well groups as needed. `field=` sets the field index; by default the next free one is used.
+- If you declare more than one acquisition, every `add_field` call must say which one it belongs to (`acquisition=`),
+  as the spec requires.
 - The well and plate metadata are rewritten after every field, so an interrupted run leaves a valid partial plate. The
   plate metadata first appears with the first field, because the spec requires at least one well.
 - By default every field must match the first one in dims, axes and channels. Pass `check_consistency=False` to allow

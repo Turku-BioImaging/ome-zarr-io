@@ -169,6 +169,100 @@ class TestPartialPlate:
             plate.close()
 
 
+class TestEmptyRowsAndColumns:
+    """NGFF 0.5 (plate metadata): every physical row and column MUST be defined, even
+    if no wells in it are written. Row and well groups SHOULD NOT exist when empty."""
+
+    ROWS = list("ABCDEFGH")
+    COLUMNS = [str(i) for i in range(1, 13)]
+
+    @pytest.fixture
+    def sparse_plate(self, plate_path):
+        """A 96-well plate with only two wells written, like the spec's sparse example."""
+        with PlateWriter(plate_path, rows=self.ROWS, columns=self.COLUMNS) as plate:
+            plate.add_field("C", "5", image(), DIMS, UNITS)
+            plate.add_field("F", "11", image(), DIMS, UNITS)
+        return plate_path
+
+    def test_all_rows_and_columns_are_listed(self, sparse_plate):
+        plate = attrs(sparse_plate)["plate"]
+        assert [r["name"] for r in plate["rows"]] == self.ROWS
+        assert [c["name"] for c in plate["columns"]] == self.COLUMNS
+        assert len(plate["wells"]) == 2
+
+    def test_indices_refer_to_the_full_row_and_column_lists(self, sparse_plate):
+        """rowIndex/columnIndex are positions in the declared lists, not among written wells."""
+        wells = attrs(sparse_plate)["plate"]["wells"]
+        assert wells == [
+            {"path": "C/5", "rowIndex": 2, "columnIndex": 4},
+            {"path": "F/11", "rowIndex": 5, "columnIndex": 10},
+        ]
+        plate = attrs(sparse_plate)["plate"]
+        for well in wells:
+            row, column = well["path"].split("/")
+            assert plate["rows"][well["rowIndex"]]["name"] == row
+            assert plate["columns"][well["columnIndex"]]["name"] == column
+
+    def test_no_groups_for_empty_rows_or_wells(self, sparse_plate):
+        rows_on_disk = {p.name for p in sparse_plate.iterdir() if p.is_dir()}
+        assert rows_on_disk == {"C", "F"}
+        assert {p.name for p in (sparse_plate / "C").iterdir() if p.is_dir()} == {"5"}
+        assert {p.name for p in (sparse_plate / "F").iterdir() if p.is_dir()} == {"11"}
+
+    def test_a_row_with_one_written_well_has_no_groups_for_the_others(self, plate_path):
+        with PlateWriter(plate_path, rows=["A"], columns=["1", "2", "3"]) as plate:
+            plate.add_field("A", "2", image(), DIMS, UNITS)
+        assert {p.name for p in (plate_path / "A").iterdir() if p.is_dir()} == {"2"}
+        assert len(attrs(plate_path)["plate"]["columns"]) == 3
+
+    def test_leading_row_and_column_can_be_empty(self, plate_path):
+        """Empty first row/column must still count, shifting the indices of the rest."""
+        with PlateWriter(plate_path, rows=["A", "B"], columns=["1", "2"]) as plate:
+            plate.add_field("B", "2", image(), DIMS, UNITS)
+        assert attrs(plate_path)["plate"]["wells"] == [
+            {"path": "B/2", "rowIndex": 1, "columnIndex": 1}
+        ]
+        assert not (plate_path / "A").exists()
+
+    def test_report_describes_the_full_layout(self, sparse_plate):
+        report = validate(sparse_plate)
+        assert report.is_valid
+        assert report.details == {"layout": "8 rows x 12 columns", "wells": 2, "fields": 1}
+
+    def test_only_written_wells_have_well_metadata(self, sparse_plate):
+        assert attrs(sparse_plate / "C" / "5")["well"]["images"] == [{"path": "0"}]
+        assert attrs(sparse_plate / "F" / "11")["well"]["images"] == [{"path": "0"}]
+
+    def test_fields_open_in_sparse_plate(self, sparse_plate):
+        for field in ("C/5/0", "F/11/0"):
+            assert Reader(sparse_plate / field).validate()
+
+    def test_partial_plate_with_empty_rows_is_valid_after_each_field(self, plate_path):
+        plate = PlateWriter(plate_path, rows=self.ROWS, columns=self.COLUMNS)
+        for row, column in [("H", "12"), ("A", "1"), ("D", "7")]:
+            plate.add_field(row, column, image(), DIMS, UNITS)
+            report = validate(plate_path)
+            assert report.is_valid
+            assert report.details["layout"] == "8 rows x 12 columns"
+
+    def test_failed_call_leaves_no_empty_row_group(self, plate_path):
+        plate = PlateWriter(plate_path, rows=self.ROWS, columns=self.COLUMNS)
+        plate.add_field("A", "1", image(), DIMS, UNITS)
+        with pytest.raises(TypeError):
+            plate.add_field("B", "2", image(), DIMS, UNITS, bogus=1)
+        assert not (plate_path / "B").exists()
+
+    def test_declared_but_unused_rows_and_columns_survive_overwrite(self, plate_path):
+        PlateWriter(plate_path, rows=["A"], columns=["1"])
+        with PlateWriter(
+            plate_path, rows=["A", "B"], columns=["1", "2"], overwrite=True
+        ) as plate:
+            plate.add_field("A", "1", image(), DIMS, UNITS)
+        plate_meta = attrs(plate_path)["plate"]
+        assert [r["name"] for r in plate_meta["rows"]] == ["A", "B"]
+        assert [c["name"] for c in plate_meta["columns"]] == ["1", "2"]
+
+
 class TestArgumentErrors:
     @pytest.mark.parametrize(
         "kwargs, message",

@@ -64,7 +64,7 @@ class TestWriting:
             # Written out of order: wells must still come out in row/column order.
             plate.add_field("B", "2", image(), DIMS, UNITS, acquisition=1)
             plate.add_field("A", "1", image(), DIMS, UNITS, acquisition=0)
-            plate.add_field("A", "1", image(), DIMS, UNITS)
+            plate.add_field("A", "1", image(), DIMS, UNITS, acquisition=1)
 
         ome = attrs(plate_path)
         assert ome["version"] == "0.5"
@@ -81,7 +81,7 @@ class TestWriting:
 
         assert attrs(plate_path / "A" / "1")["well"]["images"] == [
             {"path": "0", "acquisition": 0},
-            {"path": "1"},
+            {"path": "1", "acquisition": 1},
         ]
         assert attrs(plate_path / "B" / "2")["well"]["images"] == [
             {"path": "0", "acquisition": 1}
@@ -230,6 +230,29 @@ class TestArgumentErrors:
         plate.add_field("A", "1", image(), DIMS, UNITS, field=3)
         with pytest.raises(ValueError, match="field 3 already exists"):
             plate.add_field("A", "1", image(), DIMS, UNITS, field=3)
+
+    def test_acquisition_required_when_several_are_declared(self, plate_path):
+        plate = PlateWriter(
+            plate_path,
+            rows=["A"],
+            columns=["1"],
+            acquisitions=[{"id": 0}, {"id": 1}],
+        )
+        with pytest.raises(ValueError, match="acquisition is required"):
+            plate.add_field("A", "1", image(), DIMS, UNITS)
+        assert not (plate_path / "A").exists()  # nothing written by the failed call
+        plate.add_field("A", "1", image(), DIMS, UNITS, acquisition=1)
+        plate.close()
+        assert validate(plate_path).is_valid
+
+    def test_acquisition_optional_with_a_single_declared_acquisition(
+        self, plate_path
+    ):
+        with PlateWriter(
+            plate_path, rows=["A"], columns=["1"], acquisitions=[{"id": 0}]
+        ) as plate:
+            plate.add_field("A", "1", image(), DIMS, UNITS)
+        assert validate(plate_path).is_valid
 
     def test_unknown_acquisition_is_not_checked_without_declared_ones(
         self, plate_path

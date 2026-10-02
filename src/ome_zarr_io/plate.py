@@ -128,7 +128,8 @@ class PlateWriter:
             axis_units: Axis units, as for :class:`Writer`.
             field: Field index within the well. Defaults to the next free index.
             acquisition: Acquisition id, which must be one of the plate's
-                ``acquisitions`` when any were declared.
+                ``acquisitions`` when any were declared. Required when the plate
+                declares more than one acquisition, as the spec demands.
             **writer_kwargs: Any other :class:`Writer` argument (``downscale_levels``,
                 ``channels``, ...). ``overwrite`` is not accepted; it is controlled
                 by the plate.
@@ -144,11 +145,18 @@ class PlateWriter:
             )
         if "overwrite" in writer_kwargs:
             raise TypeError("overwrite is controlled by the PlateWriter")
-        if acquisition is not None and self.acquisitions is not None:
-            if acquisition not in {a["id"] for a in self.acquisitions}:
+        if self.acquisitions is not None:
+            ids = [a["id"] for a in self.acquisitions]
+            if acquisition is None and len(ids) > 1:
+                # NGFF 0.5 (well metadata): "acquisition" MUST be present when the
+                # plate has multiple acquisitions.
                 raise ValueError(
-                    f"unknown acquisition {acquisition}; declared ids: "
-                    f"{[a['id'] for a in self.acquisitions]}"
+                    f"acquisition is required because the plate declares several "
+                    f"acquisitions; declared ids: {ids}"
+                )
+            if acquisition is not None and acquisition not in ids:
+                raise ValueError(
+                    f"unknown acquisition {acquisition}; declared ids: {ids}"
                 )
 
         images = self._wells.get((row, column), [])

@@ -9,10 +9,17 @@ import dask.array as da
 import numpy as np
 import zarr
 
+from jsonschema.exceptions import ValidationError
+
 from .validator import OMEZarrValidator
 from .writer import Writer
 
-_NAME_PATTERN = re.compile(r"^[A-Za-z0-9]+$")
+_NAME_PATTERN = re.compile(r"[A-Za-z0-9]+")
+
+
+def _is_index(value: Any) -> bool:
+    """True for a non-negative integer (bool is not accepted)."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 class PlateWriter:
@@ -50,9 +57,10 @@ class PlateWriter:
                 and unique.
             name: Optional plate name.
             acquisitions: Optional list of acquisition dicts as defined by the spec
-                (``id`` required; ``name``, ``description``, ``maximumfieldcount``,
-                ``starttime``, ``endtime`` optional). ``add_field(acquisition=...)``
-                must refer to one of these ids.
+                (``id`` required, a unique non-negative integer; ``name``,
+                ``description``, ``maximumfieldcount``, ``starttime``, ``endtime``
+                optional). They are validated here, before anything is written.
+                ``add_field(acquisition=...)`` must refer to one of these ids.
             overwrite: Whether to replace an existing plate at ``path``.
             check_consistency: Require every field to match the first one in dims,
                 axes and channels (count and labels). The spec allows mixed fields,
@@ -85,7 +93,7 @@ class PlateWriter:
         if not names:
             raise ValueError(f"at least one {kind} is required")
         for n in names:
-            if not isinstance(n, str) or not _NAME_PATTERN.match(n):
+            if not isinstance(n, str) or not _NAME_PATTERN.fullmatch(n):
                 raise ValueError(f"invalid {kind} name {n!r}: must match [A-Za-z0-9]+")
         if len(set(names)) != len(names):
             raise ValueError(f"{kind} names must be unique: {names}")
@@ -99,12 +107,38 @@ class PlateWriter:
             return None
         ids = []
         for acq in acquisitions:
+            if not isinstance(acq, dict):
+                raise ValueError(f"acquisition must be a dict, got {acq!r}")
             if "id" not in acq:
                 raise ValueError(f"acquisition {acq!r} is missing the required 'id'")
+            if not _is_index(acq["id"]):
+                raise ValueError(
+                    f"acquisition id must be a non-negative integer, got {acq['id']!r}"
+                )
             ids.append(acq["id"])
         if len(set(ids)) != len(ids):
             raise ValueError(f"acquisition ids must be unique: {ids}")
-        return [dict(a) for a in acquisitions]
+        acquisitions = [dict(a) for a in acquisitions]
+
+        # Check the remaining keys (maximumfieldcount, starttime, ...) against the
+        # schema now, so invalid plate metadata is never written to disk.
+        probe = {
+            "ome": {
+                "version": "0.5",
+                "plate": {
+                    "rows": [{"name": "A"}],
+                    "columns": [{"name": "1"}],
+                    "wells": [{"path": "A/1", "rowIndex": 0, "columnIndex": 0}],
+                    "acquisitions": acquisitions,
+                },
+            }
+        }
+        if acquisitions:
+            try:
+                OMEZarrValidator().validate_plate_metadata(probe)
+            except ValidationError as e:
+                raise ValueError(f"invalid acquisitions: {e.message}") from e
+        return acquisitions
 
     def add_field(
         self,
@@ -127,9 +161,9 @@ class PlateWriter:
             dims: Dimension names, as for :class:`Writer`.
             axis_units: Axis units, as for :class:`Writer`.
             field: Field index within the well. Defaults to the next free index.
-            acquisition: Acquisition id, which must be one of the plate's
-                ``acquisitions`` when any were declared. Required when the plate
-                declares more than one acquisition, as the spec demands.
+            acquisition: Acquisition id, which must be one of the plate's declared
+                ``acquisitions``; it cannot be given if none were declared. Required
+                when the plate declares more than one acquisition, as the spec demands.
             **writer_kwargs: Any other :class:`Writer` argument (``downscale_levels``,
                 ``channels``, ...). ``overwrite`` is not accepted; it is controlled
                 by the plate.
@@ -145,6 +179,13 @@ class PlateWriter:
             )
         if "overwrite" in writer_kwargs:
             raise TypeError("overwrite is controlled by the PlateWriter")
+        if acquisition is not None and not self.acquisitions:
+            # NGFF 0.5 (well metadata): a field's acquisition MUST match one of
+            # the acquisitions defined in the plate metadata.
+            raise ValueError(
+                f"acquisition {acquisition} given, but the plate declares no "
+                "acquisitions; pass acquisitions=[{'id': ...}] to PlateWriter"
+            )
         if self.acquisitions is not None:
             ids = [a["id"] for a in self.acquisitions]
             if acquisition is None and len(ids) > 1:
@@ -165,8 +206,8 @@ class PlateWriter:
             field = len(images)
             while str(field) in used:
                 field += 1
-        if field < 0:
-            raise ValueError("field must be a non-negative integer")
+        if not _is_index(field):
+            raise ValueError(f"field must be a non-negative integer, got {field!r}")
         if str(field) in used:
             raise ValueError(f"field {field} already exists in well {row}/{column}")
 

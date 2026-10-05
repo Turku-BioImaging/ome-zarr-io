@@ -533,6 +533,8 @@ class Writer:
                 "name": str(level),
                 "shape": level_array.shape,
                 "dtype": level_array.dtype,
+                # NGFF 0.5: dimension_names MUST match the names in "axes"
+                "dimension_names": list(self.dims),
             }
             if chunks is not None:
                 zarr_kwargs["chunks"] = chunks
@@ -643,6 +645,8 @@ class Writer:
                 "name": str(level),
                 "shape": array.shape,
                 "dtype": array.dtype,
+                # NGFF 0.5: dimension_names MUST match the names in "axes"
+                "dimension_names": list(self.dims),
             }
 
             if chunks is not None:

@@ -164,6 +164,10 @@ This creates a nested `labels/cell_space_segmentation` group under the image and
 A label always gets the same number of resolution levels as the image on disk, as the spec requires. The
 `downscale_levels` argument of `add_labels` is deprecated.
 
+Label arrays must have an integer data type (`uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64` or
+`int64`). Float and boolean arrays are rejected; convert a boolean mask with `mask.astype("uint8")`. `validate()`
+reports a label with another data type, or with a different number of levels than its image, as invalid.
+
 ### Writing a high-content-screening (HCS) plate
 
 `PlateWriter` writes a plate as the `plate/<row>/<column>/<field>` layout defined by the OME-Zarr 0.5 spec. Each field of

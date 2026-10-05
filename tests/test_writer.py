@@ -463,3 +463,59 @@ class TestLabelLevelCount:
         writer = self.image(path, downscale_levels=2)
         writer.add_labels("mask", self.mask())
         assert Reader(path).validate()
+
+
+class TestLabelDtype:
+    """NGFF 0.5: label pixels MUST be one of the eight integer data types."""
+
+    UNITS = {"y": "micrometer", "x": "micrometer"}
+
+    @pytest.fixture
+    def writer(self, tmp_path):
+        writer = Writer(
+            tmp_path / "img.zarr",
+            np.zeros((32, 32), dtype=np.uint8),
+            ["y", "x"],
+            self.UNITS,
+            downscale_levels=1,
+        )
+        writer.write()
+        return writer
+
+    @pytest.mark.parametrize(
+        "dtype",
+        ["uint8", "int8", "uint16", "int16", "uint32", "int32", "uint64", "int64"],
+    )
+    def test_integer_dtypes_are_accepted(self, writer, dtype):
+        writer.add_labels("mask", np.ones((32, 32), dtype=dtype))
+        assert str(zarr.open_array(str(writer.path / "labels/mask/0")).dtype) == dtype
+        assert Reader(writer.path).validate()
+
+    @pytest.mark.parametrize("dtype", ["float16", "float32", "float64", "complex64"])
+    def test_float_and_complex_are_rejected(self, writer, dtype):
+        with pytest.raises(ValueError, match=f"integer data type .* got {dtype}"):
+            writer.add_labels("mask", np.ones((32, 32), dtype=dtype))
+        assert not (writer.path / "labels").exists()  # nothing written
+
+    def test_whole_number_floats_are_still_rejected(self, writer):
+        with pytest.raises(ValueError, match="integer data type"):
+            writer.add_labels("mask", np.array([[0.0, 1.0]] * 32 * 16).reshape(32, 32))
+
+    def test_bool_is_rejected_with_a_conversion_hint(self, writer):
+        mask = np.ones((32, 32), dtype=bool)
+        with pytest.raises(ValueError, match=r'got bool\. Convert .*astype\("uint8"\)'):
+            writer.add_labels("mask", mask)
+        assert not (writer.path / "labels").exists()
+        writer.add_labels("mask", mask.astype("uint8"))  # the suggested fix works
+        assert Reader(writer.path).label_names == ["mask"]
+
+    def test_dask_arrays_are_checked_too(self, writer):
+        with pytest.raises(ValueError, match="got float32"):
+            writer.add_labels("mask", da.ones((32, 32), dtype="float32", chunks=16))
+        writer.add_labels("mask", da.ones((32, 32), dtype="uint16", chunks=16))
+
+    def test_rejected_overwrite_keeps_the_existing_label(self, writer):
+        writer.add_labels("mask", np.ones((32, 32), dtype=np.uint8))
+        with pytest.raises(ValueError):
+            writer.add_labels("mask", np.ones((32, 32), dtype=bool), overwrite=True)
+        assert str(zarr.open_array(str(writer.path / "labels/mask/0")).dtype) == "uint8"

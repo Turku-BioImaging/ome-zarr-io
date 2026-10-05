@@ -472,7 +472,9 @@ class Writer:
 
         Args:
             name: Name of the label image as it will appear under the parent labels group.
-            array: Label array to attach. Must have the same dimensions as the source
+            array: Label array to attach. Must have an integer data type (uint8,
+                int8, uint16, int16, uint32, int32, uint64 or int64); float and
+                boolean arrays are rejected. Must have the same dimensions as the source
                 image; each non-spatial axis (e.g. c, z, t) may have size 1 instead of
                 the image's size, per the NGFF spec. Y/X must match the image.
             colors: Optional list of {"label-value": ..., "rgba": [...]} entries.
@@ -501,6 +503,18 @@ class Writer:
         if not isinstance(array, (np.ndarray, da.Array)):
             raise TypeError(
                 f"array must be a numpy array or dask array, got {type(array)}"
+            )
+        # NGFF 0.5: label pixels MUST be one of uint8, int8, uint16, int16, uint32,
+        # int32, uint64, int64. Checked before anything is written.
+        if array.dtype.kind not in "iu":
+            hint = (
+                ' Convert a boolean mask with array.astype("uint8").'
+                if array.dtype.kind == "b"
+                else ""
+            )
+            raise ValueError(
+                f"Label arrays must have an integer data type (uint8, int8, uint16, "
+                f"int16, uint32, int32, uint64 or int64), got {array.dtype}.{hint}"
             )
 
         label_array = (

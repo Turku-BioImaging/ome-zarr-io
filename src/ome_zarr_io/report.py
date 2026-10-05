@@ -154,6 +154,12 @@ class FilesetReport:
         return "\n".join(lines)
 
 
+# NGFF 0.5: "The pixels of the label images MUST be integer data types, i.e. one of
+# [uint8, int8, uint16, int16, uint32, int32, uint64, int64]."
+LABEL_DTYPES = frozenset(
+    {"uint8", "int8", "uint16", "int16", "uint32", "int32", "uint64", "int64"}
+)
+
 _PATH_SEGMENT = re.compile(r"[A-Za-z0-9]+")
 _WELL_PATH = re.compile(r"[A-Za-z0-9]+/[A-Za-z0-9]+")
 
@@ -209,6 +215,12 @@ def _first_multiscale(ome: Any) -> Dict[str, Any]:
             if isinstance(multiscales[0], dict):
                 return multiscales[0]
     return {}
+
+
+def _dataset_count(multiscale: Dict[str, Any]) -> Optional[int]:
+    """Number of entries in a multiscale's `datasets`, or None if it is malformed."""
+    datasets = multiscale.get("datasets")
+    return len(datasets) if isinstance(datasets, list) and datasets else None
 
 
 def _transformation(transformations: Any, kind: str) -> Optional[List[float]]:
@@ -384,6 +396,7 @@ def _describe_label(
     validator: OMEZarrValidator,
     strict: bool,
     prefix: str = "",
+    image_level_count: Optional[int] = None,
 ) -> Tuple[LabelInfo, List[ValidationIssue]]:
     location = _join(prefix, f"labels/{name}")
     attrs = dict(label_group.attrs)
@@ -405,6 +418,22 @@ def _describe_label(
     levels, level_issues = _describe_levels(label_group, multiscale, location)
     issues.extend(level_issues)
 
+    # NGFF 0.5: a label MUST have the same number of scale levels as its image.
+    label_level_count = _dataset_count(multiscale)
+    if (
+        image_level_count is not None
+        and label_level_count is not None
+        and label_level_count != image_level_count
+    ):
+        issues.append(
+            ValidationIssue(
+                "ome.multiscales.0.datasets",
+                f"label has {label_level_count} scale levels but its image has "
+                f"{image_level_count}; they must have the same number",
+                location,
+            )
+        )
+
     image_label = ome.get("image-label") if isinstance(ome, dict) else None
     image_label = image_label if isinstance(image_label, dict) else {}
     source = image_label.get("source")
@@ -418,10 +447,7 @@ def _describe_label(
     )
 
     if levels and levels[0].dtype is not None:
-        if levels[0].dtype.startswith("float") or levels[0].dtype in (
-            "bool",
-            "complex128",
-        ):
+        if levels[0].dtype not in LABEL_DTYPES:
             issues.append(
                 ValidationIssue(
                     "ome.multiscales.0.datasets.0.path",
@@ -515,7 +541,7 @@ def _inspect_image(
                 )
                 continue
             label, label_issues = _describe_label(
-                name, label_group, validator, strict, prefix
+                name, label_group, validator, strict, prefix, _dataset_count(multiscale)
             )
             labels.append(label)
             issues.extend(label_issues)

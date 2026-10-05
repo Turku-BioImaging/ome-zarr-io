@@ -200,7 +200,10 @@ class TestInvalidLabelMetadata:
             axis_units={"y": "micrometer", "x": "micrometer"},
         )
         writer.write()
-        writer.add_labels(name="floaty", array=np.zeros((20, 20), dtype=np.float32))
+        # add_labels rejects float arrays, so write a valid label and replace its data.
+        writer.add_labels(name="floaty", array=np.zeros((20, 20), dtype=np.uint8))
+        label = zarr.open_group(str(path / "labels" / "floaty"), mode="a")
+        label.create_array("0", shape=(20, 20), dtype=np.float32, overwrite=True)
 
         report = validate(path)
         assert not report
@@ -587,3 +590,102 @@ class TestWellIsValidatedWithItsFields:
             plate / "A" / "1", lambda o: o["well"]["images"][0].update(acquisition=99)
         )
         assert validate(plate / "A" / "1").is_valid
+
+
+# --- labels: integer dtype and level count (NGFF 0.5 MUSTs) ---------------
+INTEGER_DTYPES = ["uint8", "int8", "uint16", "int16", "uint32", "int32", "uint64", "int64"]
+
+
+@pytest.fixture
+def labelled(tmp_path):
+    """A 3-level image with one valid uint8 label called "mask"."""
+    path = tmp_path / "labelled.ome.zarr"
+    writer = Writer(
+        path, np.zeros((32, 32), dtype=np.uint8), ["y", "x"], UNITS, downscale_levels=2
+    )
+    writer.write()
+    writer.add_labels("mask", np.ones((32, 32), dtype=np.uint8))
+    return path
+
+
+def retype_label(path, dtype, name="mask"):
+    """Replace level 0 of a label with an array of another dtype."""
+    label = zarr.open_group(str(path / "labels" / name), mode="a")
+    label.create_array("0", shape=(32, 32), dtype=dtype, overwrite=True)
+
+
+class TestLabelDtype:
+    @pytest.mark.parametrize("dtype", INTEGER_DTYPES)
+    def test_integer_dtypes_are_valid(self, labelled, dtype):
+        retype_label(labelled, dtype)
+        report = validate(labelled)
+        assert report.is_valid, report.errors
+        assert report.labels[0].dtype == dtype
+
+    @pytest.mark.parametrize("dtype", ["float32", "float64", "bool", "complex64"])
+    def test_other_dtypes_are_invalid(self, labelled, dtype):
+        retype_label(labelled, dtype)
+        report = validate(labelled)
+        assert not report
+        assert found(report, "labels/mask", f"integer data type, got {dtype}")
+
+
+class TestLabelLevelCount:
+    def test_matching_count_is_valid(self, labelled):
+        report = validate(labelled)
+        assert report.is_valid, report.errors
+        assert report.labels[0].n_levels == len(report.levels) == 3
+
+    def test_label_with_fewer_levels(self, labelled):
+        edit_ome(
+            labelled / "labels" / "mask", lambda o: o["multiscales"][0]["datasets"].pop()
+        )
+        report = validate(labelled)
+        assert not report
+        (issue,) = report.errors
+        assert issue.location == "labels/mask"
+        assert issue.path == "ome.multiscales.0.datasets"
+        assert "label has 2 scale levels but its image has 3" in issue.message
+
+    def test_label_with_more_levels(self, labelled):
+        edit_ome(labelled, lambda o: o["multiscales"][0]["datasets"].pop())
+        report = validate(labelled)
+        assert found(report, "labels/mask", "label has 3 scale levels but its image has 2")
+
+    def test_only_the_mismatched_label_is_reported(self, labelled):
+        writer = Writer(
+            labelled, np.zeros((32, 32), dtype=np.uint8), ["y", "x"], UNITS
+        )
+        writer.add_labels("good", np.ones((32, 32), dtype=np.uint8))
+        edit_ome(
+            labelled / "labels" / "mask", lambda o: o["multiscales"][0]["datasets"].pop()
+        )
+        assert {i.location for i in validate(labelled).errors} == {"labels/mask"}
+
+    def test_reported_in_text_and_raise(self, labelled):
+        edit_ome(
+            labelled / "labels" / "mask", lambda o: o["multiscales"][0]["datasets"].pop()
+        )
+        report = validate(labelled)
+        assert "labels/mask: ome.multiscales.0.datasets: label has 2 scale levels" in str(
+            report
+        )
+        with pytest.raises(ValidationError, match="label has 2 scale levels"):
+            report.raise_if_invalid()
+
+    def test_mismatch_inside_a_plate_field(self, plate):
+        edit_ome(
+            plate / "A" / "1" / "0" / "labels" / "cells",
+            lambda o: o["multiscales"][0]["datasets"].pop(),
+        )
+        report = validate(plate)
+        assert found(
+            report, "A/1/0/labels/cells", "label has 1 scale levels but its image has 2"
+        )
+
+    def test_malformed_image_datasets_is_not_blamed_on_the_label(self, labelled):
+        """A broken image entry is an image problem, not a label level mismatch."""
+        edit_ome(labelled, lambda o: o["multiscales"][0]["datasets"][1].pop("path"))
+        report = validate(labelled)
+        assert not report
+        assert all(i.location == "image" for i in report.errors)

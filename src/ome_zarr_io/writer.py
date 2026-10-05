@@ -10,7 +10,15 @@ import numpy as np
 import zarr
 from zarr.core.array import CompressorsLike
 
-from .channels import ChannelSpec, any_needs_stats, parse_channels, resolve_channels
+from .channels import (
+    ChannelSpec,
+    any_needs_stats,
+    complete_omero,
+    normalize_color,
+    omero_needs_stats,
+    parse_channels,
+    resolve_channels,
+)
 from .downscaler import Downscaler
 from .schema_models import (
     Axis,
@@ -47,6 +55,7 @@ class Writer:
         channels: Optional[Union[Dict[str, Any], List[Any], Omero]] = None,
         colors: Optional[Literal["random"]] = None,
         color_seed: int = 0,
+        name: Optional[str] = None,
     ):
         """Initialize the OME-Zarr writer.
 
@@ -75,15 +84,23 @@ class Writer:
             omero_metadata: Deprecated; use ``channels`` instead.
                 Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
+                A channel without a color or window gets an automatic color or the
+                full data range, because the spec requires both.
             channels: Plain-Python channel description, an alternative to ``omero_metadata``.
                 A dict keyed by label (``{"DAPI": {"color": "0000FF", "window": (0, 4095)}}``),
                 a list of labels, a list of dicts, or an Omero object. Per-channel keys:
                 ``color`` (hex without "#", or "random"), ``window`` ("auto" (default),
-                "minmax", (start, end), a Window, or None), ``family`` and ``active``.
+                "minmax", (start, end), a Window, or None, which is written as the
+                full data range like "minmax"), ``family`` and ``active``.
                 Window min/max are the data's min/max; "auto" start/end follow Fiji's
                 auto-contrast. Requires a "c" axis with one entry per channel.
-            colors: "random" assigns a distinct color to every channel without one.
+                A channel without a ``color`` gets a distinct automatic one, because
+                the spec requires every channel to have a color.
+            colors: Kept for compatibility. Channels without a color always get an
+                automatic one now, so "random" has no further effect.
             color_seed: Changes the automatic palette; the same seed gives the same colors.
+            name: Name stored in the multiscale metadata. Defaults to the file name
+                of ``path`` without its extension.
             zarr_backend: Zarr backend to use for writing. Either "zarr-python" or "zarrs"
                 (default: "zarrs").
         """
@@ -95,6 +112,7 @@ class Writer:
             self.image = image
         self.dims = dims
         self.overwrite = overwrite
+        self.name = name
 
         # Process and validate axis_units
         self.axes = self._process_axis_units(axis_units, dims, self.image.shape)
@@ -123,6 +141,11 @@ class Writer:
             self._init_channels(channels, colors)
         elif colors is not None:
             raise ValueError("colors requires channels")
+        if self.omero_metadata is not None:
+            # Reject invalid colors now, before any pixel data is written.
+            for channel in self.omero_metadata.channels:
+                if channel.color:
+                    normalize_color(channel.color)
 
     @staticmethod
     def _warn_omero_deprecated(what: str) -> None:
@@ -404,6 +427,25 @@ class Writer:
 
         return [ScaleTransformation(scale=scale)]
 
+    def _image_level_count(self, image_group: zarr.Group) -> int:
+        """Number of resolution levels of the image on disk, from its metadata."""
+        ome = dict(image_group.attrs).get("ome")
+        multiscales = ome.get("multiscales") if isinstance(ome, dict) else None
+        datasets = (
+            multiscales[0].get("datasets")
+            if isinstance(multiscales, list)
+            and multiscales
+            and isinstance(multiscales[0], dict)
+            else None
+        )
+        if not isinstance(datasets, list) or not datasets:
+            raise ValueError(
+                f"Cannot add labels to '{self.path}': it has no multiscales "
+                "metadata, so it is not an OME-Zarr image. Write the image first "
+                "with .write()."
+            )
+        return len(datasets)
+
     def add_labels(
         self,
         name: str,
@@ -430,7 +472,9 @@ class Writer:
 
         Args:
             name: Name of the label image as it will appear under the parent labels group.
-            array: Label array to attach. Must have the same dimensions as the source
+            array: Label array to attach. Must have an integer data type (uint8,
+                int8, uint16, int16, uint32, int32, uint64 or int64); float and
+                boolean arrays are rejected. Must have the same dimensions as the source
                 image; each non-spatial axis (e.g. c, z, t) may have size 1 instead of
                 the image's size, per the NGFF spec. Y/X must match the image.
             colors: Optional list of {"label-value": ..., "rgba": [...]} entries.
@@ -438,8 +482,11 @@ class Writer:
             source_image: Relative path from the label image group to the source image group.
             overwrite: If True, overwrite an existing label image with the same name.
             downscale_method: Label images should typically use nearest-neighbor downsampling.
-            downscale_levels: Optional override for number of label pyramid levels.
-            downscale_factor: Optional override for the label downscaling factor.
+            downscale_levels: Deprecated. The label always gets the same number of
+                levels as the image on disk, as the spec requires. Passing the
+                image's own value emits a DeprecationWarning; any other value raises.
+            downscale_factor: Optional override for the label downscaling factor. It
+                must still allow as many levels as the image has.
             chunks: Chunk specification for label arrays.
             shards: Optional sharding settings.
             compressors: Optional compressor configuration.
@@ -456,6 +503,18 @@ class Writer:
         if not isinstance(array, (np.ndarray, da.Array)):
             raise TypeError(
                 f"array must be a numpy array or dask array, got {type(array)}"
+            )
+        # NGFF 0.5: label pixels MUST be one of uint8, int8, uint16, int16, uint32,
+        # int32, uint64, int64. Checked before anything is written.
+        if array.dtype.kind not in "iu":
+            hint = (
+                ' Convert a boolean mask with array.astype("uint8").'
+                if array.dtype.kind == "b"
+                else ""
+            )
+            raise ValueError(
+                f"Label arrays must have an integer data type (uint8, int8, uint16, "
+                f"int16, uint32, int32, uint64 or int64), got {array.dtype}.{hint}"
             )
 
         label_array = (
@@ -487,6 +546,48 @@ class Writer:
 
         root_group = zarr.open_group(str(self.path), mode="a")
 
+        # NGFF 0.5: a label image MUST have the same number of scale levels as the
+        # image it annotates, so the count is read from the image on disk rather
+        # than from this Writer's settings (which may not match it).
+        image_levels = self._image_level_count(root_group)
+        label_downscale_levels = image_levels - 1
+        if downscale_levels is not None:
+            if max(0, downscale_levels) != label_downscale_levels:
+                raise ValueError(
+                    f"downscale_levels={downscale_levels} would give the label "
+                    f"{max(0, downscale_levels) + 1} levels, but the image at "
+                    f"'{self.path}' has {image_levels}. A label must have the same "
+                    "number of levels as its image; omit downscale_levels."
+                )
+            warnings.warn(
+                "downscale_levels is deprecated in add_labels; the label always gets "
+                "the same number of levels as the image on disk.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        scaler = Downscaler(
+            downscale_factor=(
+                downscale_factor
+                if downscale_factor is not None
+                else self.downscale_factor
+            ),
+            downscale_method=(
+                downscale_method if downscale_method is not None else "nearest"
+            ),
+            downscale_levels=label_downscale_levels,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # the cap is reported as an error below
+            possible = scaler.validate_downscale_levels(label_array.shape)
+        if possible != label_downscale_levels:
+            raise ValueError(
+                f"The image at '{self.path}' has {image_levels} levels, but a label "
+                f"of shape {label_array.shape} downscaled by a factor of "
+                f"{scaler.downscale_factor} can only have {possible + 1}. Use a "
+                "smaller downscale_factor so the label has as many levels as its image."
+            )
+
         labels_group = root_group.require_group("labels")
         labels_group_ome_attrs = dict(labels_group.attrs.get("ome", {}))  # type: ignore
         labels = labels_group_ome_attrs.get("labels", [])  # type: ignore
@@ -498,21 +599,6 @@ class Writer:
 
         label_group = labels_group.require_group(name)
 
-        scaler = Downscaler(
-            downscale_factor=(
-                downscale_factor
-                if downscale_factor is not None
-                else self.downscale_factor
-            ),
-            downscale_method=(
-                downscale_method if downscale_method is not None else "nearest"
-            ),
-            downscale_levels=(
-                downscale_levels
-                if downscale_levels is not None
-                else (self.downscale_levels or 0)
-            ),
-        )
         label_arrays = scaler.create_downscaled_arrays(da.asarray(label_array))
 
         # Base scale/axes come from the parent image; the per-level multiplier uses
@@ -529,6 +615,8 @@ class Writer:
                 "name": str(level),
                 "shape": level_array.shape,
                 "dtype": level_array.dtype,
+                # NGFF 0.5: dimension_names MUST match the names in "axes"
+                "dimension_names": list(self.dims),
             }
             if chunks is not None:
                 zarr_kwargs["chunks"] = chunks
@@ -639,6 +727,8 @@ class Writer:
                 "name": str(level),
                 "shape": array.shape,
                 "dtype": array.dtype,
+                # NGFF 0.5: dimension_names MUST match the names in "axes"
+                "dimension_names": list(self.dims),
             }
 
             if chunks is not None:
@@ -654,10 +744,13 @@ class Writer:
             zarr_array = root_group.create_array(**zarr_kwargs)
             data = np.asarray(array)
             zarr_array[:] = data  # type: ignore
-            if (
-                level == 0
-                and self._channel_specs
-                and any_needs_stats(self._channel_specs)
+            if level == 0 and (
+                (self._channel_specs and any_needs_stats(self._channel_specs))
+                or (
+                    self._channel_specs is None
+                    and self.omero_metadata is not None
+                    and omero_needs_stats(self.omero_metadata)
+                )
             ):
                 level0 = data
 
@@ -678,13 +771,21 @@ class Writer:
         multiscale = Multiscale(
             datasets=datasets,
             axes=self.axes,
-            name=self.path.stem,  # Use filename as name
+            name=self.name if self.name is not None else self.path.stem,
         )
 
         omero = self.omero_metadata
         if self._channel_specs is not None:
             omero = resolve_channels(
                 self._channel_specs, level0, self.dims.index("c"), self.color_seed
+            )
+        elif omero is not None:
+            # NGFF 0.5: every channel MUST have a color and a window.
+            omero = complete_omero(
+                omero,
+                level0,
+                self.dims.index("c") if "c" in self.dims else None,
+                self.color_seed,
             )
 
         # Create OME metadata

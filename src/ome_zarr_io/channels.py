@@ -99,6 +99,11 @@ class ChannelSpec:
     auto_color: bool = False
 
 
+def _empty_window() -> Window:
+    """Window for a channel with no finite data: the spec still requires one."""
+    return Window(start=0.0, min=0.0, end=1.0, max=1.0)
+
+
 def _spec_from_dict(d: Dict[str, Any], label: Optional[str]) -> ChannelSpec:
     unknown = set(d) - _CHANNEL_KEYS
     if unknown:
@@ -181,15 +186,15 @@ def parse_channels(
     _check_unique_labels(specs)
     for index, channel in enumerate(specs):
         _check_explicit_window(channel, index)
-        if colors == "random" and channel.color is None:
+        # NGFF 0.5: every omero channel MUST have a color, so a channel without
+        # one always gets an automatic color (colors="random" is now the default).
+        if channel.color is None:
             channel.auto_color = True
     return specs
 
 
 def _needs_stats(spec: ChannelSpec) -> bool:
     w = spec.window
-    if w is None:
-        return False
     if isinstance(w, Window):
         return False
     if isinstance(w, dict):
@@ -215,7 +220,9 @@ def _resolve_window(
 ) -> Optional[Window]:
     w = spec.window
     if w is None:
-        return None
+        # NGFF 0.5: every omero channel MUST have a window, so "no window" is
+        # written as the full data range.
+        w = "minmax"
     if isinstance(w, Window):
         return _check_window(w, where)
     if isinstance(w, dict):
@@ -226,7 +233,7 @@ def _resolve_window(
     assert values is not None
     finite = values[np.isfinite(values)] if values.dtype.kind == "f" else values
     if finite.size == 0:
-        return None
+        return _empty_window()
     integer = finite.dtype.kind in "iu"
     dmin, dmax = _num(finite.min(), integer), _num(finite.max(), integer)
 
@@ -286,3 +293,50 @@ def resolve_channels(
 
 def any_needs_stats(specs: List[ChannelSpec]) -> bool:
     return any(_needs_stats(s) for s in specs)
+
+
+def omero_needs_stats(omero: Omero) -> bool:
+    """True if an ``Omero`` object has a channel without a window."""
+    return any(c.window is None for c in omero.channels)
+
+
+def complete_omero(
+    omero: Omero,
+    level0: Optional[np.ndarray],
+    c_axis: Optional[int],
+    color_seed: int = 0,
+) -> Omero:
+    """Return a copy of ``omero`` in which every channel has a color and a window.
+
+    NGFF 0.5 requires both for every channel. A missing color is filled with an
+    automatic one (avoiding the colors already set) and a missing window with the
+    channel's full data range. Given colors are normalized to ``RRGGBB``.
+    """
+    channels = omero.channels
+    fixed = [normalize_color(c.color) for c in channels if c.color]
+    pool = (
+        random_colors(len(channels), color_seed, avoid=fixed)
+        if any(not c.color for c in channels)
+        else []
+    )
+    completed = []
+    for i, c in enumerate(channels):
+        window = c.window
+        if window is None:
+            if level0 is None:
+                raise ValueError("image data is required to compute channel windows")
+            values = level0
+            if c_axis is not None and i < level0.shape[c_axis]:
+                values = np.take(level0, i, axis=c_axis)
+            where = f"channel {c.label if c.label is not None else i}"
+            window = _resolve_window(ChannelSpec(window="minmax"), values, where)
+        completed.append(
+            Channel(
+                window=window,
+                label=c.label,
+                family=c.family,
+                color=normalize_color(c.color) if c.color else pool[i],
+                active=c.active,
+            )
+        )
+    return Omero(channels=completed)

@@ -17,7 +17,9 @@ class ValidationIssue:
 
     path: str  # dotted location of the offending value, e.g. "ome.multiscales.0.axes"
     message: str
-    location: str = "image"  # "image" or "labels/<name>"
+    # Which node the problem is in: "image", "plate", "well", "labels/<name>", or
+    # the node's path inside a plate or well, e.g. "A/1", "A/1/0", "A/1/0/labels/cells".
+    location: str = "image"
 
     def __str__(self) -> str:
         where = f"{self.location}: {self.path}" if self.path else self.location
@@ -152,6 +154,16 @@ class FilesetReport:
         return "\n".join(lines)
 
 
+# NGFF 0.5: "The pixels of the label images MUST be integer data types, i.e. one of
+# [uint8, int8, uint16, int16, uint32, int32, uint64, int64]."
+LABEL_DTYPES = frozenset(
+    {"uint8", "int8", "uint16", "int16", "uint32", "int32", "uint64", "int64"}
+)
+
+_PATH_SEGMENT = re.compile(r"[A-Za-z0-9]+")
+_WELL_PATH = re.compile(r"[A-Za-z0-9]+/[A-Za-z0-9]+")
+
+
 def _dotted(path: Sequence[Any], prefix: str = "") -> str:
     parts = [prefix] if prefix else []
     parts.extend(str(p) for p in path)
@@ -203,6 +215,12 @@ def _first_multiscale(ome: Any) -> Dict[str, Any]:
             if isinstance(multiscales[0], dict):
                 return multiscales[0]
     return {}
+
+
+def _dataset_count(multiscale: Dict[str, Any]) -> Optional[int]:
+    """Number of entries in a multiscale's `datasets`, or None if it is malformed."""
+    datasets = multiscale.get("datasets")
+    return len(datasets) if isinstance(datasets, list) and datasets else None
 
 
 def _transformation(transformations: Any, kind: str) -> Optional[List[float]]:
@@ -315,7 +333,7 @@ def _describe_channels(ome: Any) -> List[ChannelInfo]:
 
 
 def _check_channels(
-    ome: Any, axes: List[Dict[str, Any]], levels: Any
+    ome: Any, axes: List[Dict[str, Any]], levels: Any, location: str = "image"
 ) -> List[ValidationIssue]:
     """Semantic OMERO checks the JSON schema does not express."""
     omero = ome.get("omero") if isinstance(ome, dict) else None
@@ -325,7 +343,7 @@ def _check_channels(
     issues: List[ValidationIssue] = []
 
     def add(path: str, message: str) -> None:
-        issues.append(ValidationIssue(f"ome.omero.{path}", message, "image"))
+        issues.append(ValidationIssue(f"ome.omero.{path}", message, location))
 
     names = [a.get("name") for a in axes]
     if "c" not in names:
@@ -377,8 +395,10 @@ def _describe_label(
     label_group: zarr.Group,
     validator: OMEZarrValidator,
     strict: bool,
+    prefix: str = "",
+    image_level_count: Optional[int] = None,
 ) -> Tuple[LabelInfo, List[ValidationIssue]]:
-    location = f"labels/{name}"
+    location = _join(prefix, f"labels/{name}")
     attrs = dict(label_group.attrs)
     ome = attrs.get("ome")
     issues = [
@@ -398,6 +418,22 @@ def _describe_label(
     levels, level_issues = _describe_levels(label_group, multiscale, location)
     issues.extend(level_issues)
 
+    # NGFF 0.5: a label MUST have the same number of scale levels as its image.
+    label_level_count = _dataset_count(multiscale)
+    if (
+        image_level_count is not None
+        and label_level_count is not None
+        and label_level_count != image_level_count
+    ):
+        issues.append(
+            ValidationIssue(
+                "ome.multiscales.0.datasets",
+                f"label has {label_level_count} scale levels but its image has "
+                f"{image_level_count}; they must have the same number",
+                location,
+            )
+        )
+
     image_label = ome.get("image-label") if isinstance(ome, dict) else None
     image_label = image_label if isinstance(image_label, dict) else {}
     source = image_label.get("source")
@@ -411,10 +447,7 @@ def _describe_label(
     )
 
     if levels and levels[0].dtype is not None:
-        if levels[0].dtype.startswith("float") or levels[0].dtype in (
-            "bool",
-            "complex128",
-        ):
+        if levels[0].dtype not in LABEL_DTYPES:
             issues.append(
                 ValidationIssue(
                     "ome.multiscales.0.datasets.0.path",
@@ -426,16 +459,288 @@ def _describe_label(
     return label, issues
 
 
+def _join(prefix: str, path: str) -> str:
+    return f"{prefix}/{path}" if prefix else path
+
+
+def _child_group(group: zarr.Group, path: str) -> Optional[zarr.Group]:
+    try:
+        node = group[path]
+    except KeyError:
+        return None
+    return node if isinstance(node, zarr.Group) else None
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _version_issues(ome: Any, expected: Optional[str], location: str) -> List[ValidationIssue]:
+    """NGFF 0.5: the OME-Zarr version MUST be consistent within a hierarchy."""
+    if expected is None or not isinstance(ome, dict):
+        return []
+    version = ome.get("version")
+    if isinstance(version, str) and version != expected:
+        return [
+            ValidationIssue(
+                "ome.version",
+                f"version '{version}' differs from the root's '{expected}'; the "
+                "OME-Zarr version must be consistent within a hierarchy",
+                location,
+            )
+        ]
+    return []
+
+
+def _inspect_image(
+    group: zarr.Group,
+    ome: Any,
+    validator: OMEZarrValidator,
+    strict: bool,
+    prefix: str = "",
+) -> Tuple[
+    List[Dict[str, Any]],
+    List[LevelInfo],
+    List[ChannelInfo],
+    List[LabelInfo],
+    List[ValidationIssue],
+]:
+    """Describe an image group and run the checks the image schema cannot express.
+
+    `prefix` is the image's path inside a plate or well ("" for a root image); it
+    is used to say where each issue was found.
+    """
+    location = prefix or "image"
+    issues: List[ValidationIssue] = []
+
+    multiscale = _first_multiscale(ome)
+    raw_axes = multiscale.get("axes")
+    axes = [a for a in raw_axes if isinstance(a, dict)] if isinstance(raw_axes, list) else []
+    levels, level_issues = _describe_levels(group, multiscale, location)
+    issues.extend(level_issues)
+    channels = _describe_channels(ome)
+    issues.extend(_check_channels(ome, axes, levels, location))
+
+    labels: List[LabelInfo] = []
+    if "labels" in group:
+        labels_group = group["labels"]
+        labels_ome = dict(labels_group.attrs).get("ome")
+        listed = labels_ome.get("labels") if isinstance(labels_ome, dict) else None
+        label_names = [n for n in listed or [] if isinstance(n, str)]
+        for name in label_names:
+            label_group = (
+                labels_group.get(name) if isinstance(labels_group, zarr.Group) else None
+            )
+            if not isinstance(label_group, zarr.Group):
+                issues.append(
+                    ValidationIssue(
+                        "ome.labels",
+                        f"label '{name}' is listed but no such group exists",
+                        _join(prefix, "labels"),
+                    )
+                )
+                continue
+            label, label_issues = _describe_label(
+                name, label_group, validator, strict, prefix, _dataset_count(multiscale)
+            )
+            labels.append(label)
+            issues.extend(label_issues)
+
+    return axes, levels, channels, labels, issues
+
+
+def _check_well(
+    well_group: zarr.Group,
+    ome: Any,
+    validator: OMEZarrValidator,
+    strict: bool,
+    version: Optional[str],
+    prefix: str = "",
+    acquisition_ids: Optional[List[Any]] = None,
+) -> List[ValidationIssue]:
+    """Check a well's fields of view: each listed image must exist and be a valid image.
+
+    `acquisition_ids` are the ids declared by the enclosing plate; pass None when the
+    well is validated on its own, in which case acquisitions cannot be checked.
+    """
+    location = prefix or "well"
+    issues: List[ValidationIssue] = []
+    well = ome.get("well") if isinstance(ome, dict) else None
+    images = well.get("images") if isinstance(well, dict) else None
+    if not isinstance(images, list):
+        return issues  # reported by schema validation
+
+    seen: set = set()
+    for i, image in enumerate(images):
+        if not isinstance(image, dict) or not isinstance(image.get("path"), str):
+            continue  # reported by schema validation
+        path = image["path"]
+        item = f"ome.well.images.{i}"
+        if path in seen:
+            issues.append(
+                ValidationIssue(f"{item}.path", f"duplicate image path '{path}'", location)
+            )
+            continue
+        seen.add(path)
+
+        if acquisition_ids is not None:
+            acquisition = image.get("acquisition")
+            if acquisition is None:
+                if len(acquisition_ids) > 1:
+                    issues.append(
+                        ValidationIssue(
+                            item,
+                            "'acquisition' is required because the plate defines "
+                            "several acquisitions",
+                            location,
+                        )
+                    )
+            elif acquisition not in acquisition_ids:
+                issues.append(
+                    ValidationIssue(
+                        f"{item}.acquisition",
+                        f"acquisition {acquisition!r} is not defined in the plate metadata",
+                        location,
+                    )
+                )
+
+        if not _PATH_SEGMENT.fullmatch(path):
+            continue  # reported by schema validation; do not follow odd paths
+        field_group = _child_group(well_group, path)
+        field_location = _join(prefix, path)
+        if field_group is None:
+            issues.append(
+                ValidationIssue(
+                    f"{item}.path",
+                    f"image '{path}' is listed but no such group exists",
+                    location,
+                )
+            )
+            continue
+
+        field_attrs = dict(field_group.attrs)
+        field_ome = field_attrs.get("ome")
+        issues.extend(
+            ValidationIssue(_dotted(p), message, field_location)
+            for p, message in validator.iter_issues(
+                field_attrs, "strict_image" if strict else "image"
+            )
+        )
+        issues.extend(_version_issues(field_ome, version, field_location))
+        issues.extend(
+            _inspect_image(field_group, field_ome, validator, strict, field_location)[4]
+        )
+    return issues
+
+
+def _names(items: Any) -> Optional[List[Any]]:
+    """The `name` of each row/column object, or None if the list is malformed."""
+    if not isinstance(items, list):
+        return None
+    return [item.get("name") if isinstance(item, dict) else None for item in items]
+
+
+def _check_plate(
+    root: zarr.Group,
+    ome: Any,
+    validator: OMEZarrValidator,
+    strict: bool,
+    version: Optional[str],
+) -> List[ValidationIssue]:
+    """Plate rules the schema cannot express, then every listed well and its fields."""
+    issues: List[ValidationIssue] = []
+    plate = ome.get("plate") if isinstance(ome, dict) else None
+    if not isinstance(plate, dict):
+        return issues  # reported by schema validation
+
+    def add(path: str, message: str) -> None:
+        issues.append(ValidationIssue(f"ome.plate.{path}", message, "plate"))
+
+    rows, columns = _names(plate.get("rows")), _names(plate.get("columns"))
+    for key, names in (("rows", rows), ("columns", columns)):
+        strings = [n for n in names or [] if isinstance(n, str)]
+        for dup in sorted({n for n in strings if strings.count(n) > 1}):
+            add(key, f"duplicate {key[:-1]} name '{dup}'")
+
+    acquisitions = plate.get("acquisitions")
+    acquisition_ids = (
+        [a.get("id") for a in acquisitions if isinstance(a, dict)]
+        if isinstance(acquisitions, list)
+        else []
+    )
+    for dup in sorted({i for i in acquisition_ids if _is_int(i) and acquisition_ids.count(i) > 1}):
+        add("acquisitions", f"duplicate acquisition id {dup}")
+
+    wells = plate.get("wells")
+    seen: set = set()
+    for i, well in enumerate(wells if isinstance(wells, list) else []):
+        if not isinstance(well, dict) or not isinstance(well.get("path"), str):
+            continue  # reported by schema validation
+        path = well["path"]
+        if path in seen:
+            add(f"wells.{i}.path", f"duplicate well path '{path}'")
+            continue
+        seen.add(path)
+        if not _WELL_PATH.fullmatch(path):
+            continue  # reported by schema validation; do not follow odd paths
+        row_name, column_name = path.split("/")
+
+        # rowIndex, columnIndex and path MUST all refer to the same row/column pair.
+        for key, names, name, kind in (
+            ("rowIndex", rows, row_name, "row"),
+            ("columnIndex", columns, column_name, "column"),
+        ):
+            index = well.get(key)
+            if names is None or not _is_int(index):
+                continue  # reported by schema validation
+            if not 0 <= index < len(names):
+                add(
+                    f"wells.{i}.{key}",
+                    f"{key} {index} is out of range: the plate has {len(names)} {kind}s",
+                )
+            elif names[index] != name:
+                add(
+                    f"wells.{i}.{key}",
+                    f"{key} {index} refers to {kind} '{names[index]}' but the path "
+                    f"'{path}' names {kind} '{name}'",
+                )
+
+        well_group = _child_group(root, path)
+        if well_group is None:
+            add(f"wells.{i}.path", f"well '{path}' is listed but no such group exists")
+            continue
+        well_attrs = dict(well_group.attrs)
+        well_ome = well_attrs.get("ome")
+        issues.extend(
+            ValidationIssue(_dotted(p), message, path)
+            for p, message in validator.iter_issues(
+                well_attrs, "strict_well" if strict else "well"
+            )
+        )
+        issues.extend(_version_issues(well_ome, version, path))
+        issues.extend(
+            _check_well(
+                well_group, well_ome, validator, strict, version, path, acquisition_ids
+            )
+        )
+    return issues
+
+
 def validate(path: Union[str, Path], strict: bool = False) -> FilesetReport:
     """Validate an OME-Zarr 0.5 fileset and summarize what it contains.
 
     Unlike `Reader`, this never fails on malformed metadata: every problem found is
     recorded in the returned report's `errors` instead of being raised.
 
+    A plate is validated as a whole: its own metadata, every well it lists and every
+    field of view (and label image) in those wells. A well is validated together with
+    its fields. Each issue's `location` says which node it was found in.
+
     Args:
         path: Path (or URL) to the root OME-Zarr group. Images, plates, wells and
-            bioformats2raw layouts are recognized; only images are described in detail.
-        strict: If True, validate against the `strict_image`/`strict_label` schemas.
+            bioformats2raw layouts are recognized; only a root image is described in
+            detail (axes, levels, channels, labels).
+        strict: If True, validate against the `strict_*` schemas.
 
     Returns:
         A `FilesetReport`. `bool(report)` is True when the fileset is valid.
@@ -495,43 +800,25 @@ def validate(path: Union[str, Path], strict: bool = False) -> FilesetReport:
     schema = (
         f"strict_{report.kind}" if strict and report.kind != "bf2raw" else report.kind
     )
+    root_location = report.kind if report.kind in ("plate", "well") else "image"
     report.errors.extend(
-        ValidationIssue(_dotted(p), message)
+        ValidationIssue(_dotted(p), message, root_location)
         for p, message in validator.iter_issues(attrs, schema)
     )
     if report.kind != "image":
         report.details = _describe_node(report.kind, ome)
-        return report  # levels, channels and labels only apply to images
-
-    multiscale = _first_multiscale(ome)
-    axes = multiscale.get("axes")
-    if isinstance(axes, list):
-        report.axes = [a for a in axes if isinstance(a, dict)]
-    report.levels, level_issues = _describe_levels(root, multiscale, "image")
-    report.errors.extend(level_issues)
-    report.channels = _describe_channels(ome)
-    report.errors.extend(_check_channels(ome, report.axes, report.levels))
-
-    if "labels" in root:
-        labels_group = root["labels"]
-        labels_ome = dict(labels_group.attrs).get("ome")
-        listed = labels_ome.get("labels") if isinstance(labels_ome, dict) else None
-        label_names = [n for n in listed or [] if isinstance(n, str)]
-        for name in label_names:
-            label_group = (
-                labels_group.get(name) if isinstance(labels_group, zarr.Group) else None
+        if report.kind == "plate":
+            report.errors.extend(
+                _check_plate(root, ome, validator, strict, report.spec_version)
             )
-            if not isinstance(label_group, zarr.Group):
-                report.errors.append(
-                    ValidationIssue(
-                        "ome.labels",
-                        f"label '{name}' is listed but no such group exists",
-                        "labels",
-                    )
-                )
-                continue
-            label, issues = _describe_label(name, label_group, validator, strict)
-            report.labels.append(label)
-            report.errors.extend(issues)
+        elif report.kind == "well":
+            report.errors.extend(
+                _check_well(root, ome, validator, strict, report.spec_version)
+            )
+        return report  # axes, levels, channels and labels describe a root image only
 
+    report.axes, report.levels, report.channels, report.labels, issues = _inspect_image(
+        root, ome, validator, strict
+    )
+    report.errors.extend(issues)
     return report

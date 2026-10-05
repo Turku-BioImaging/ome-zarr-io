@@ -12,7 +12,7 @@ is the community format for storing them in a chunked, cloud-friendly way that v
 can open. Getting the metadata exactly right is fiddly. `ome-zarr-io` handles it for you, so you can spend your
 time on the analysis instead of the file format.
 
-`ome-zarr-io` writes NumPy or Dask arrays as OME-Zarr 0.5 datasets with axes, units, pixel sizes, multiscale pyramids, channels and segmentation labels. It also reads them back and validates them against the OME-Zarr 0.5 schemas, from Python or the command line.
+`ome-zarr-io` writes NumPy or Dask arrays as OME-Zarr 0.5 datasets with axes, units, pixel sizes, multiscale pyramids, channels, segmentation labels and high-content-screening plates. It also reads them back and validates them against the OME-Zarr 0.5 schemas, from Python or the command line.
 
 **Quick start**
 
@@ -101,21 +101,25 @@ writer = Writer(
     image=image,
     dims=dims,
     axis_units=axis_units,
-    channels={"DAPI": {"color": "0000FF", "window": (0, 200)}, "GFP": {}},
-    colors="random",  # distinct colors for channels without one; color_seed=... changes the palette
+    channels={"DAPI": {"color": "0000FF", "window": (0, 200)}, "GFP": {}},  # GFP gets an automatic color
+    color_seed=0,  # change to get a different automatic palette
 )
 ```
 
 `channels` accepts a dict keyed by label, a list of labels, or a list of dicts, and requires a `c` axis with one
 entry per channel. Per-channel keys:
 
-- `color`: hex without "#", or `"random"`
-- `window`: `"auto"` (default), `"minmax"`, `(start, end)`, a `Window`, or `None`
+- `color`: hex without "#". If omitted (or `"random"`), the channel gets a distinct automatic color, because the
+  spec requires every channel to have one
+- `window`: `"auto"` (default), `"minmax"`, `(start, end)`, a `Window`, or `None`. The spec requires every channel
+  to have a window, so `None` is written as the full data range, like `"minmax"`
 - `family` and `active`
 
 Each window's `min`/`max` are the data's min/max; with `"auto"`, `start`/`end` follow Fiji's auto-contrast
-(`"minmax"` uses the full range). `colors="random"` gives every channel without a color a distinct one
-(`color_seed=...` changes the palette); `ome_zarr_io.random_colors(n, seed=0)` exposes the same generator.
+(`"minmax"` uses the full range). Automatic colors avoid the hues of the colors you set, and are reproducible:
+the same `color_seed` gives the same colors (`color_seed=...` changes the palette).
+`ome_zarr_io.random_colors(n, seed=0)` exposes the same generator. `colors="random"` is still accepted but no
+longer needed.
 
 `Omero(...)` objects, `omero_metadata=`, and the top-level `Channel`/`Window`/`Omero` exports are deprecated or
 removed from `ome_zarr_io`. Passing `omero_metadata=` (or an `Omero` in `channels=`) emits a `DeprecationWarning`;
@@ -156,6 +160,53 @@ writer.add_labels(
 ```
 
 This creates a nested `labels/cell_space_segmentation` group under the image and writes NGFF 0.5 label metadata in the parent `ome.labels` list and the label group's `ome.image-label` block. See [OME-Zarr 0.5 spec](https://ngff.openmicroscopy.org/specifications/0.5/index.html#labels-metadata) for more details.
+
+A label always gets the same number of resolution levels as the image on disk, as the spec requires. The
+`downscale_levels` argument of `add_labels` is deprecated.
+
+Label arrays must have an integer data type (`uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64` or
+`int64`). Float and boolean arrays are rejected; convert a boolean mask with `mask.astype("uint8")`. `validate()`
+reports a label with another data type, or with a different number of levels than its image, as invalid.
+
+### Writing a high-content-screening (HCS) plate
+
+`PlateWriter` writes a plate as the `plate/<row>/<column>/<field>` layout defined by the OME-Zarr 0.5 spec. Each field of
+view is an ordinary multiscale image written with `Writer`, so it accepts the same options.
+
+```python
+import numpy as np
+from ome_zarr_io import PlateWriter
+
+units = {"y": "micrometer", "x": "micrometer"}
+
+with PlateWriter(
+    "screen.ome.zarr",
+    rows=["A", "B"],
+    columns=["1", "2", "3"],
+    name="Screen 1",
+    acquisitions=[{"id": 0, "name": "t0"}],  # optional
+) as plate:
+    for row, column in [("A", "1"), ("A", "2"), ("B", "3")]:
+        for _ in range(2):  # two fields of view per well
+            image = np.random.randint(0, 255, size=(2, 256, 256), dtype=np.uint8)
+            plate.add_field(
+                row, column, image, dims=["c", "y", "x"], axis_units=units,
+                channels=["DAPI", "GFP"], downscale_levels=2, acquisition=0,
+            )
+```
+
+- Rows and columns are declared up front. Their order sets each well's `rowIndex` and `columnIndex`.
+- `add_field` takes the same keyword arguments as `Writer` (except `overwrite`, which belongs to the plate). It creates
+  the row and well groups as needed. `field=` sets the field index; by default the next free one is used.
+- If you declare more than one acquisition, every `add_field` call must say which one it belongs to (`acquisition=`),
+  as the spec requires.
+- The well and plate metadata are rewritten after every field, so an interrupted run leaves a valid partial plate. The
+  plate metadata first appears with the first field, because the spec requires at least one well.
+- By default every field must match the first one in dims, axes and channels. Pass `check_consistency=False` to allow
+  mixed fields.
+- `add_field` returns the field's `Writer`, so you can attach labels with `add_labels`.
+- Leaving the `with` block validates the plate and all wells against the schemas. Without `with`, call `plate.close()`.
+- `overwrite=True` replaces an existing plate.
 
 ### Reading an OME-Zarr fileset
 
@@ -212,6 +263,12 @@ report.raise_if_invalid()   # raises jsonschema.exceptions.ValidationError
 ```
 
 Use `strict=True` for the stricter schemas.
+
+A plate is validated all the way down: its own metadata, every well it lists, and every field of view and label image
+in those wells. `issue.location` says where each problem is, for example `plate`, `A/1` (a well), `A/1/0` (a field) or
+`A/1/0/labels/cells`. Besides the schemas, it checks that each well's `path`, `rowIndex` and `columnIndex` agree, that
+listed wells and fields exist, that field acquisitions are defined by the plate, and that the OME-Zarr version is the
+same throughout. Validating a well on its own checks its fields too.
 
 ### Command line
 

@@ -10,6 +10,7 @@ __author__ = "Junel Solis, Turku BioImaging"
 __email__ = "junel.solis@abo.fi"
 
 from .writer import Writer
+from .plate import PlateWriter
 from .validator import OMEZarrValidator
 from .reader import Reader, PhysicalSize
 from .report import FilesetReport, ValidationIssue, validate
@@ -18,6 +19,7 @@ from .schema_models import Axis
 
 __all__ = [
     "Writer",
+    "PlateWriter",
     "OMEZarrValidator",
     "Reader",
     "PhysicalSize",

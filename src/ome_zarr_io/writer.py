@@ -83,7 +83,10 @@ class Writer:
                 "minmax", (start, end), a Window, or None), ``family`` and ``active``.
                 Window min/max are the data's min/max; "auto" start/end follow Fiji's
                 auto-contrast. Requires a "c" axis with one entry per channel.
-            colors: "random" assigns a distinct color to every channel without one.
+                A channel without a ``color`` gets a distinct automatic one, because
+                the spec requires every channel to have a color.
+            colors: Kept for compatibility. Channels without a color always get an
+                automatic one now, so "random" has no further effect.
             color_seed: Changes the automatic palette; the same seed gives the same colors.
             name: Name stored in the multiscale metadata. Defaults to the file name
                 of ``path`` without its extension.

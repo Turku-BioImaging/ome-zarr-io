@@ -181,7 +181,9 @@ def parse_channels(
     _check_unique_labels(specs)
     for index, channel in enumerate(specs):
         _check_explicit_window(channel, index)
-        if colors == "random" and channel.color is None:
+        # NGFF 0.5: every omero channel MUST have a color, so a channel without
+        # one always gets an automatic color (colors="random" is now the default).
+        if channel.color is None:
             channel.auto_color = True
     return specs
 

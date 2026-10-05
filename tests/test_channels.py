@@ -87,7 +87,8 @@ def test_dict_channels_min_max_and_window(tmp_path):
     p = make(tmp_path, a, channels={"DAPI": {"color": "#0000ff"}, "GFP": {}})
     ch = channels_of(p)
     assert [c.label for c in ch] == ["DAPI", "GFP"]
-    assert ch[0].color == "0000FF" and ch[1].color is None
+    assert ch[0].color == "0000FF"
+    assert HEX.match(ch[1].color) and ch[1].color != "0000FF"
     for i, c in enumerate(ch):
         assert c.window.min == a[i].min() and c.window.max == a[i].max()
         assert c.window.min <= c.window.start <= c.window.end <= c.window.max
@@ -244,3 +245,42 @@ def test_validate_flags_semantic_channel_problems(tmp_path, mutate, expected):
     report = validate(p)
     assert not report.is_valid
     assert any(expected in e.message for e in report.errors)
+
+
+# --- default colors (NGFF 0.5: every omero channel MUST have a color) ------
+def test_channels_without_color_get_one_by_default(tmp_path):
+    p = make(tmp_path, data(3), channels=["a", "b", "c"])
+    colors = [c.color for c in channels_of(p)]
+    assert all(HEX.match(c) for c in colors)
+    assert len(set(colors)) == 3
+    assert validate(p).is_valid
+
+
+def test_default_colors_match_colors_random(tmp_path):
+    default = make(tmp_path / "d", data(3), channels=["a", "b", "c"])
+    explicit = make(tmp_path / "e", data(3), channels=["a", "b", "c"], colors="random")
+    assert [c.color for c in channels_of(default)] == [
+        c.color for c in channels_of(explicit)
+    ]
+
+
+def test_default_colors_are_reproducible_and_follow_the_seed(tmp_path):
+    def colors(name, **kwargs):
+        p = make(tmp_path / name, data(3), channels=["a", "b", "c"], **kwargs)
+        return [c.color for c in channels_of(p)]
+
+    assert colors("one") == colors("two")
+    assert colors("seeded", color_seed=7) != colors("three")
+
+
+def test_explicit_colors_are_kept_and_avoided(tmp_path):
+    p = make(tmp_path, data(3), channels={"a": {"color": "FF0000"}, "b": {}, "c": {}})
+    colors = [c.color for c in channels_of(p)]
+    assert colors[0] == "FF0000"
+    assert all(HEX.match(c) for c in colors[1:])
+    assert "FF0000" not in colors[1:] and colors[1] != colors[2]
+
+
+def test_dict_entries_without_color_get_one(tmp_path):
+    p = make(tmp_path, data(2), channels=[{"label": "a"}, {"label": "b", "window": None}])
+    assert all(HEX.match(c.color) for c in channels_of(p))

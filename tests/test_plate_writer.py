@@ -171,6 +171,23 @@ class TestDimensionNames:
             assert meta["dimension_names"] == axes == dims
 
 
+class TestChannelColors:
+    """NGFF 0.5: every omero channel MUST have a color."""
+
+    def test_fields_get_the_same_default_colors(self, plate_path):
+        with PlateWriter(plate_path, rows=["A"], columns=["1", "2"]) as plate:
+            plate.add_field("A", "1", image(), DIMS, UNITS, channels=["DAPI", "GFP"])
+            plate.add_field("A", "2", image(), DIMS, UNITS, channels=["DAPI", "GFP"])
+
+        def colors(field):
+            return [c["color"] for c in attrs(plate_path / field)["omero"]["channels"]]
+
+        first = colors("A/1/0")
+        assert len(first) == 2 and len(set(first)) == 2
+        assert all(len(c) == 6 and int(c, 16) >= 0 for c in first)
+        assert colors("A/2/0") == first
+
+
 class TestPartialPlate:
     def test_valid_after_every_field(self, plate_path):
         """No close() and no with-block: the plate is valid after each add_field."""

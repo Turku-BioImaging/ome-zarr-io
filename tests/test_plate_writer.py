@@ -138,6 +138,39 @@ class TestWriting:
         assert label["image-label"]["source"] == {"image": "../../"}
 
 
+class TestDimensionNames:
+    """NGFF 0.5: every multiscale array MUST carry dimension_names matching "axes"."""
+
+    def test_fields_and_labels_have_dimension_names(self, plate_path):
+        with PlateWriter(plate_path, rows=["A"], columns=["1"]) as plate:
+            writer = plate.add_field(
+                "A", "1", image(), DIMS, UNITS, downscale_levels=2
+            )
+            writer.add_labels("cells", np.ones((1, 32, 32), dtype=np.uint16))
+
+        arrays = [
+            p.parent
+            for p in plate_path.rglob("zarr.json")
+            if json.loads(p.read_text())["node_type"] == "array"
+        ]
+        assert len(arrays) == 6  # 3 image levels + 3 label levels
+        for array in arrays:
+            meta = json.loads((array / "zarr.json").read_text())
+            assert meta["dimension_names"] == DIMS, array
+
+    def test_dimension_names_match_the_axes_metadata(self, plate_path):
+        dims = ["t", "c", "z", "y", "x"]
+        units = {"t": "second", **UNITS_Z}
+        data = np.zeros((1, 2, 2, 32, 32), dtype=np.uint8)
+        with PlateWriter(plate_path, rows=["A"], columns=["1"]) as plate:
+            plate.add_field("A", "1", data, dims, units, downscale_levels=1)
+        field = plate_path / "A" / "1" / "0"
+        axes = [a["name"] for a in attrs(field)["multiscales"][0]["axes"]]
+        for level in ("0", "1"):
+            meta = json.loads((field / level / "zarr.json").read_text())
+            assert meta["dimension_names"] == axes == dims
+
+
 class TestPartialPlate:
     def test_valid_after_every_field(self, plate_path):
         """No close() and no with-block: the plate is valid after each add_field."""
@@ -348,12 +381,73 @@ class TestArgumentErrors:
             plate.add_field("A", "1", image(), DIMS, UNITS)
         assert validate(plate_path).is_valid
 
-    def test_unknown_acquisition_is_not_checked_without_declared_ones(
-        self, plate_path
-    ):
-        with PlateWriter(plate_path, rows=["A"], columns=["1"]) as plate:
+    def test_acquisition_without_declared_acquisitions_is_rejected(self, plate_path):
+        """NGFF 0.5: a field's acquisition MUST match one defined in the plate metadata."""
+        plate = PlateWriter(plate_path, rows=["A"], columns=["1"])
+        with pytest.raises(ValueError, match="declares no acquisitions"):
             plate.add_field("A", "1", image(), DIMS, UNITS, acquisition=7)
-        assert validate(plate_path).is_valid
+        assert not (plate_path / "A").exists()
+
+    def test_acquisition_with_empty_acquisitions_list_is_rejected(self, plate_path):
+        plate = PlateWriter(plate_path, rows=["A"], columns=["1"], acquisitions=[])
+        with pytest.raises(ValueError, match="declares no acquisitions"):
+            plate.add_field("A", "1", image(), DIMS, UNITS, acquisition=0)
+
+    @pytest.mark.parametrize("bad_id", [-1, "0", 1.5, True, None])
+    def test_acquisition_id_must_be_a_non_negative_integer(self, plate_path, bad_id):
+        with pytest.raises(ValueError, match="non-negative integer"):
+            PlateWriter(
+                plate_path, rows=["A"], columns=["1"], acquisitions=[{"id": bad_id}]
+            )
+        assert not plate_path.exists()  # rejected before anything is written
+
+    @pytest.mark.parametrize(
+        "acquisition",
+        [
+            {"id": 0, "maximumfieldcount": 0},
+            {"id": 0, "maximumfieldcount": "2"},
+            {"id": 0, "name": 5},
+            {"id": 0, "starttime": -1},
+            {"id": 0, "endtime": "noon"},
+        ],
+    )
+    def test_invalid_acquisition_fields_are_rejected_up_front(
+        self, plate_path, acquisition
+    ):
+        with pytest.raises(ValueError, match="invalid acquisitions"):
+            PlateWriter(
+                plate_path, rows=["A"], columns=["1"], acquisitions=[acquisition]
+            )
+        assert not plate_path.exists()
+
+    def test_full_acquisition_metadata_is_accepted(self, plate_path):
+        acquisition = {
+            "id": 3,
+            "name": "run",
+            "description": "d",
+            "maximumfieldcount": 2,
+            "starttime": 1343731272000,
+            "endtime": 1343735801000,
+        }
+        with PlateWriter(
+            plate_path, rows=["A"], columns=["1"], acquisitions=[acquisition]
+        ) as plate:
+            plate.add_field("A", "1", image(), DIMS, UNITS, acquisition=3)
+        assert attrs(plate_path)["plate"]["acquisitions"] == [acquisition]
+
+    @pytest.mark.parametrize("bad_field", [1.5, True, "0", -1])
+    def test_field_must_be_a_non_negative_integer(self, plate_path, bad_field):
+        plate = PlateWriter(plate_path, rows=["A"], columns=["1"])
+        with pytest.raises(ValueError, match="field must be a non-negative integer"):
+            plate.add_field("A", "1", image(), DIMS, UNITS, field=bad_field)
+        assert not (plate_path / "A").exists()
+
+    @pytest.mark.parametrize("name", ["A\n", "\nA", "A ", "A-1", "Ä"])
+    def test_names_must_be_entirely_alphanumeric(self, plate_path, name):
+        with pytest.raises(ValueError, match="invalid row name"):
+            PlateWriter(plate_path, rows=[name], columns=["1"])
+        with pytest.raises(ValueError, match="invalid column name"):
+            PlateWriter(plate_path, rows=["A"], columns=[name])
 
 
 class TestFailedCallsLeaveNoTrace:

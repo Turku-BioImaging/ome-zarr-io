@@ -329,3 +329,26 @@ def test_add_labels_rejects_incompatible_shapes(temp_dir):
         writer.add_labels(name="b", array=np.zeros((3, 4, 32, 1), dtype=np.uint8))
     with pytest.raises(ValueError, match="dimensions"):
         writer.add_labels(name="c", array=np.zeros((4, 32, 32), dtype=np.uint8))
+
+
+class TestDimensionNames:
+    """NGFF 0.5: "dimension_names" MUST be in each array's zarr.json and match "axes"."""
+
+    def test_image_and_label_arrays(self, tmp_path):
+        import json
+
+        path = tmp_path / "dims.ome.zarr"
+        dims = ["c", "z", "y", "x"]
+        writer = Writer(
+            path=path,
+            image=np.zeros((2, 3, 32, 32), dtype=np.uint8),
+            dims=dims,
+            axis_units={"z": "micrometer", "y": "micrometer", "x": "micrometer"},
+            downscale_levels=1,
+        )
+        writer.write()
+        writer.add_labels("mask", np.ones((1, 3, 32, 32), dtype=np.uint8))
+
+        for array in ("0", "1", "labels/mask/0", "labels/mask/1"):
+            meta = json.loads((path / array / "zarr.json").read_text())
+            assert meta["dimension_names"] == dims, array

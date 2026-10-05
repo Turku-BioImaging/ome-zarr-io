@@ -161,6 +161,9 @@ writer.add_labels(
 
 This creates a nested `labels/cell_space_segmentation` group under the image and writes NGFF 0.5 label metadata in the parent `ome.labels` list and the label group's `ome.image-label` block. See [OME-Zarr 0.5 spec](https://ngff.openmicroscopy.org/specifications/0.5/index.html#labels-metadata) for more details.
 
+A label always gets the same number of resolution levels as the image on disk, as the spec requires. The
+`downscale_levels` argument of `add_labels` is deprecated.
+
 ### Writing a high-content-screening (HCS) plate
 
 `PlateWriter` writes a plate as the `plate/<row>/<column>/<field>` layout defined by the OME-Zarr 0.5 spec. Each field of

@@ -10,7 +10,15 @@ import numpy as np
 import zarr
 from zarr.core.array import CompressorsLike
 
-from .channels import ChannelSpec, any_needs_stats, parse_channels, resolve_channels
+from .channels import (
+    ChannelSpec,
+    any_needs_stats,
+    complete_omero,
+    normalize_color,
+    omero_needs_stats,
+    parse_channels,
+    resolve_channels,
+)
 from .downscaler import Downscaler
 from .schema_models import (
     Axis,
@@ -76,11 +84,14 @@ class Writer:
             omero_metadata: Deprecated; use ``channels`` instead.
                 Optional OMERO metadata for channel display configuration.
                 Must be an Omero object containing channel information for image visualization.
+                A channel without a color or window gets an automatic color or the
+                full data range, because the spec requires both.
             channels: Plain-Python channel description, an alternative to ``omero_metadata``.
                 A dict keyed by label (``{"DAPI": {"color": "0000FF", "window": (0, 4095)}}``),
                 a list of labels, a list of dicts, or an Omero object. Per-channel keys:
                 ``color`` (hex without "#", or "random"), ``window`` ("auto" (default),
-                "minmax", (start, end), a Window, or None), ``family`` and ``active``.
+                "minmax", (start, end), a Window, or None, which is written as the
+                full data range like "minmax"), ``family`` and ``active``.
                 Window min/max are the data's min/max; "auto" start/end follow Fiji's
                 auto-contrast. Requires a "c" axis with one entry per channel.
                 A channel without a ``color`` gets a distinct automatic one, because
@@ -130,6 +141,11 @@ class Writer:
             self._init_channels(channels, colors)
         elif colors is not None:
             raise ValueError("colors requires channels")
+        if self.omero_metadata is not None:
+            # Reject invalid colors now, before any pixel data is written.
+            for channel in self.omero_metadata.channels:
+                if channel.color:
+                    normalize_color(channel.color)
 
     @staticmethod
     def _warn_omero_deprecated(what: str) -> None:
@@ -665,10 +681,13 @@ class Writer:
             zarr_array = root_group.create_array(**zarr_kwargs)
             data = np.asarray(array)
             zarr_array[:] = data  # type: ignore
-            if (
-                level == 0
-                and self._channel_specs
-                and any_needs_stats(self._channel_specs)
+            if level == 0 and (
+                (self._channel_specs and any_needs_stats(self._channel_specs))
+                or (
+                    self._channel_specs is None
+                    and self.omero_metadata is not None
+                    and omero_needs_stats(self.omero_metadata)
+                )
             ):
                 level0 = data
 
@@ -696,6 +715,14 @@ class Writer:
         if self._channel_specs is not None:
             omero = resolve_channels(
                 self._channel_specs, level0, self.dims.index("c"), self.color_seed
+            )
+        elif omero is not None:
+            # NGFF 0.5: every channel MUST have a color and a window.
+            omero = complete_omero(
+                omero,
+                level0,
+                self.dims.index("c") if "c" in self.dims else None,
+                self.color_seed,
             )
 
         # Create OME metadata

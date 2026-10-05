@@ -97,7 +97,7 @@ class TestValidFileset:
             "0: path=0 shape=(2, 20, 20)",
             "channels:  2",
             "0: DAPI (#0000FF, window 0-255)",
-            "1: GFP (#00FF00)",
+            "1: GFP (#00FF00, window 0-0)",
             "labels:    1",
             "nuclei (uint8, 2 levels, colors)",
         ):

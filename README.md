@@ -111,7 +111,8 @@ entry per channel. Per-channel keys:
 
 - `color`: hex without "#". If omitted (or `"random"`), the channel gets a distinct automatic color, because the
   spec requires every channel to have one
-- `window`: `"auto"` (default), `"minmax"`, `(start, end)`, a `Window`, or `None`
+- `window`: `"auto"` (default), `"minmax"`, `(start, end)`, a `Window`, or `None`. The spec requires every channel
+  to have a window, so `None` is written as the full data range, like `"minmax"`
 - `family` and `active`
 
 Each window's `min`/`max` are the data's min/max; with `"auto"`, `start`/`end` follow Fiji's auto-contrast

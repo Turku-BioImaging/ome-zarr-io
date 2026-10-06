@@ -15,7 +15,7 @@ EXIT_ERROR = 2
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ome-zarr-io", description="Work with OME-Zarr 0.5 filesets."
+        prog="ome-zarr-io", description="Work with OME-Zarr 0.5 filesets (images and plates)."
     )
     parser.add_argument("--version", action="version", version=__version__)
     subcommands = parser.add_subparsers(dest="command", metavar="<command>")

@@ -1,4 +1,4 @@
-"""Reader module for OME-Zarr 0.5 filesets."""
+"""Reader module for OME-Zarr 0.5 images."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,13 +22,14 @@ class PhysicalSize:
 
 
 class Reader:
-    """Reads and validates OME-Zarr 0.5 image filesets."""
+    """Reads and validates an OME-Zarr 0.5 image (a Zarr group with ``multiscales``)."""
 
     def __init__(self, path: Union[str, Path]):
-        """Open an existing OME-Zarr fileset for reading.
+        """Open an existing OME-Zarr image for reading.
 
         Args:
-            path: Path to the root OME-Zarr group (the directory containing zarr.json).
+            path: Path to the image group (the directory containing zarr.json). For a
+                plate, pass one of its fields, e.g. ``plate.zarr/A/1/0``.
 
         Raises:
             FileNotFoundError: If no zarr group exists at `path`.
@@ -52,7 +53,7 @@ class Reader:
                 instead of the permissive `image`/`label` schemas.
 
         Returns:
-            True if the fileset is valid.
+            True if the image is valid.
 
         Raises:
             jsonschema.exceptions.ValidationError: If validation fails.
@@ -86,7 +87,7 @@ class Reader:
         return errors
 
     def report(self, strict: bool = False) -> FilesetReport:
-        """Return a structured `FilesetReport` (validity plus a summary of the fileset).
+        """Return a structured `FilesetReport` (validity plus a summary of the image).
 
         Unlike `validate()`, this never raises for invalid metadata; see
         `ome_zarr_io.validate` for details.

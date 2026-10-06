@@ -1,6 +1,6 @@
 # ome-zarr-io
 
-Read, write, and validate OME-Zarr 0.5 multiscale images: from a NumPy array to a spec-compliant dataset in a few lines of Python.
+Read, write, and validate OME-Zarr 0.5 images and high-content-screening plates: from a NumPy array to a spec-compliant OME-Zarr image in a few lines of Python.
 
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-writer/actions/workflows/ci-cd.yml)
 [![Python 3.11 | 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
@@ -12,7 +12,7 @@ is the community format for storing them in a chunked, cloud-friendly way that v
 can open. Getting the metadata exactly right is fiddly. `ome-zarr-io` handles it for you, so you can spend your
 time on the analysis instead of the file format.
 
-`ome-zarr-io` writes NumPy or Dask arrays as OME-Zarr 0.5 datasets with axes, units, pixel sizes, multiscale pyramids, channels, segmentation labels and high-content-screening plates. It also reads them back and validates them against the OME-Zarr 0.5 schemas, from Python or the command line.
+`ome-zarr-io` writes NumPy or Dask arrays as OME-Zarr 0.5 images with axes, units, pixel sizes, multiscale pyramids, channels and segmentation labels, and arranges such images into high-content-screening plates. It also reads images back and validates images and plates against the OME-Zarr 0.5 schemas, from Python or the command line.
 
 **Quick start**
 
@@ -37,9 +37,23 @@ print(Reader("example.ome.zarr").get_voxel_size())       # physical pixel size
 ![Stack](https://go-skill-icons.vercel.app/api/icons?i=py,numpy,dask,pytest,githubactions&theme=dark)
 
 
+## Terminology
+
+This project follows the [OME-Zarr 0.5 specification](https://ngff.openmicroscopy.org/0.5/):
+
+- **Image**: a Zarr group with `multiscales` metadata. It holds a pyramid of resolution levels (one array per
+  level) and may also carry channel metadata and labels. `Writer` writes images and `Reader` reads them.
+- **Image data**: the NumPy or Dask array you pass in (the `image=` argument), as opposed to the image on disk.
+- **Label image**: an image stored under an image's `labels/` group.
+- **Plate, well, field**: the high-content-screening layout `plate/<row>/<column>/<field>`. A field (of view) is an
+  image.
+- **Fileset**: the whole hierarchy of Zarr groups under one path. It can be an image, a plate, a well or a
+  bioformats2raw collection. `validate()` and the command line accept any fileset; `Reader` and
+  `Writer.from_existing` need an image, so for a plate pass one of its fields.
+
 ## Usage
 
-### Writing an OME-Zarr 0.5 fileset
+### Writing an OME-Zarr 0.5 image
 
 ```python
 import numpy as np
@@ -82,7 +96,7 @@ writer = Writer(
     overwrite=True
 )
 
-# Optional: configure chunking, sharding, and compression for large datasets
+# Optional: configure chunking, sharding, and compression for large images
 compressors = zarr.codecs.BloscCodec(cname="zstd", clevel=5, shuffle='bitshuffle')
 
 writer.write(
@@ -125,7 +139,7 @@ longer needed.
 removed from `ome_zarr_io`. Passing `omero_metadata=` (or an `Omero` in `channels=`) emits a `DeprecationWarning`;
 use `channels=` instead. `Channel`, `Window` and `Omero` remain importable from `ome_zarr_io.schema_models`.
 
-### Adding labels to an existing OME-Zarr 0.5 fileset
+### Adding labels to an OME-Zarr 0.5 image
 
 ```python
 import numpy as np
@@ -168,7 +182,7 @@ Label arrays must have an integer data type (`uint8`, `int8`, `uint16`, `int16`,
 `int64`). Float and boolean arrays are rejected; convert a boolean mask with `mask.astype("uint8")`. `validate()`
 reports a label with another data type, or with a different number of levels than its image, as invalid.
 
-### Adding labels to an OME-Zarr fileset that is already on disk
+#### Adding labels to an image that is already on disk
 
 `Writer.from_existing` attaches a `Writer` to an OME-Zarr image you did not just write, so you can add labels to it
 without re-supplying its dimensions, pixel sizes or pyramid settings:
@@ -230,9 +244,9 @@ with PlateWriter(
 - Leaving the `with` block validates the plate and all wells against the schemas. Without `with`, call `plate.close()`.
 - `overwrite=True` replaces an existing plate.
 
-### Reading an OME-Zarr fileset
+### Reading an OME-Zarr image
 
-Use the `Reader` class to validate a fileset and retrieve channel or label data as NumPy/Dask arrays.
+Use the `Reader` class to validate an image and retrieve channel or label data as NumPy/Dask arrays.
 
 ```python
 from ome_zarr_io import Reader
@@ -264,7 +278,8 @@ print(reader.get_voxel_size())     # {"z": 0.325, "y": 0.15, "x": 0.15}
 
 ### Validating an OME-Zarr fileset
 
-`validate()` checks a fileset against the OME-Zarr 0.5 schemas and returns a `FilesetReport`. It never
+`validate()` checks a fileset (an image, a plate, a well or a bioformats2raw collection) against the OME-Zarr 0.5
+schemas and returns a `FilesetReport`. It never
 raises on malformed metadata; problems are collected in `report.errors`.
 
 ```python

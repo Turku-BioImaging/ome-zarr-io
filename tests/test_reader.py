@@ -177,7 +177,7 @@ class TestValidation:
     def test_get_validation_errors_empty_for_valid_fileset(self, reader):
         assert reader.get_validation_errors() == []
 
-    # Broken filesets the Reader can still open (metadata parses but is invalid).
+    # Broken images the Reader can still open (metadata parses but is invalid).
     @pytest.mark.parametrize(
         "mutate,label",
         [

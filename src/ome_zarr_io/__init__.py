@@ -1,4 +1,4 @@
-"""OME-Zarr package for writing, reading, and validating OME-Zarr 0.5 multiscale images."""
+"""OME-Zarr package for writing, reading, and validating OME-Zarr 0.5 images and high-content-screening plates."""
 
 from importlib.metadata import PackageNotFoundError, version
 

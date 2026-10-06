@@ -79,7 +79,12 @@ class LabelInfo:
 
 @dataclass
 class FilesetReport:
-    """Validity of an OME-Zarr fileset plus a summary of what it contains."""
+    """Validity of an OME-Zarr fileset plus a summary of what it contains.
+
+    A fileset is the whole hierarchy of Zarr groups under one path: an image, a
+    plate (with its wells and fields), a well, or a bioformats2raw collection.
+    `kind` says which.
+    """
 
     path: str
     strict: bool = False

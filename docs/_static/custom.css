@@ -1,0 +1,55 @@
+/* Self-hosted fonts (SIL Open Font License; see fonts/OFL-*.txt). Latin subset.
+   Source Sans 3 is the current name of Source Sans Pro, the Turku BioImaging site font. */
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("fonts/source-sans-3-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("fonts/source-sans-3-latin-wght-italic.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Roomier body text. */
+article[role="main"] {
+  line-height: 1.7;
+}
+
+/* Headings in the brand colour with a light weight, as on bioimaging.fi. The text
+   colour is a darker shade of the brand blue on light backgrounds for contrast. */
+h1, h2, h3, h4 {
+  color: var(--color-brand-primary);
+  font-weight: 300;
+}
+h4 {
+  font-weight: 600;
+}
+/* The pure brand blue is used for non-text accents. */
+article h1 {
+  border-bottom: 3px solid #00aeef;
+  border-radius: 0;
+  margin-left: 0;
+  margin-right: 0;
+  padding: 0 0 0.25em;
+}
+::selection {
+  background: #00aeef;
+  color: #000;
+}
+
+/* Code reads better without programming ligatures such as -> or !=. */
+code, pre, kbd, samp {
+  font-variant-ligatures: none;
+}

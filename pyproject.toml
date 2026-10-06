@@ -56,14 +56,15 @@ dev = [
 ]
 docs = [
     "sphinx",
-    "sphinx-rtd-theme",
-    "sphinx-autodoc-typehints",
+    "myst-parser",
+    "furo",
+    "sphinx-copybutton",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Turku-BioImaging/ome-zarr-io"
 Repository = "https://github.com/Turku-BioImaging/ome-zarr-io"
-Documentation = "https://github.com/Turku-BioImaging/ome-zarr-io"
+Documentation = "https://turku-bioimaging.github.io/ome-zarr-io/"
 "Bug Tracker" = "https://github.com/Turku-BioImaging/ome-zarr-io/issues"
 
 [tool.setuptools]

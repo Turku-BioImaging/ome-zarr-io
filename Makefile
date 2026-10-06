@@ -1,6 +1,6 @@
 # Makefile for ome-zarr-io
 
-.PHONY: help install install-dev test test-cov lint format clean
+.PHONY: help install install-dev test test-cov lint format clean docs
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -31,6 +31,9 @@ format:  ## Format code
 format-check:  ## Check code formatting
 	black --check src/ tests/ examples/
 
+docs:  ## Build the documentation site (fails on warnings)
+	sphinx-build -W --keep-going -b html docs docs/_build/html
+
 clean:  ## Clean up build artifacts
 	rm -rf build/
 	rm -rf dist/
@@ -38,6 +41,7 @@ clean:  ## Clean up build artifacts
 	rm -rf .pytest_cache/
 	rm -rf .coverage
 	rm -rf htmlcov/
+	rm -rf docs/_build/
 	find . -type d -name __pycache__ -delete
 	find . -type f -name "*.pyc" -delete
 

@@ -168,6 +168,28 @@ Label arrays must have an integer data type (`uint8`, `int8`, `uint16`, `int16`,
 `int64`). Float and boolean arrays are rejected; convert a boolean mask with `mask.astype("uint8")`. `validate()`
 reports a label with another data type, or with a different number of levels than its image, as invalid.
 
+### Adding labels to an OME-Zarr fileset that is already on disk
+
+`Writer.from_existing` attaches a `Writer` to an OME-Zarr image you did not just write, so you can add labels to it
+without re-supplying its dimensions, pixel sizes or pyramid settings:
+
+```python
+import numpy as np
+from ome_zarr_io import Writer
+
+writer = Writer.from_existing("example.ome.zarr")  # or a plate field: "screen.ome.zarr/A/1/0"
+writer.add_labels("cell_space_segmentation", label_mask)
+```
+
+Everything `add_labels` needs is read from the image's metadata (axes, shape, pixel sizes, number of levels and
+downscale factor); no pixel data is read, and the image is not modified. `write()` is disabled on the returned
+`Writer`, so the image cannot be overwritten by accident.
+
+The image's pyramid must be one this library could have written: only Y and X downscaled, by a constant integer
+factor, with no `translation` or multiscale-level `coordinateTransformations`. Otherwise `from_existing` raises a
+`ValueError` explaining what differs, because labels written for it would not line up with the image. Pass a field
+of a plate (`.../A/1/0`), not the plate itself.
+
 ### Writing a high-content-screening (HCS) plate
 
 `PlateWriter` writes a plate as the `plate/<row>/<column>/<field>` layout defined by the OME-Zarr 0.5 spec. Each field of

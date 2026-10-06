@@ -1,5 +1,6 @@
 """Main OME-Zarr writer implementation."""
 
+import math
 import warnings
 import shutil
 from pathlib import Path
@@ -20,6 +21,7 @@ from .channels import (
     resolve_channels,
 )
 from .downscaler import Downscaler
+from .reader import Reader
 from .schema_models import (
     Axis,
     Dataset,
@@ -104,6 +106,7 @@ class Writer:
             zarr_backend: Zarr backend to use for writing. Either "zarr-python" or "zarrs"
                 (default: "zarrs").
         """
+        self._from_existing = False
         self.path = Path(path)
         # Convert numpy array to dask array if necessary
         if isinstance(image, np.ndarray):
@@ -146,6 +149,156 @@ class Writer:
             for channel in self.omero_metadata.channels:
                 if channel.color:
                     normalize_color(channel.color)
+
+    @classmethod
+    def from_existing(cls, path: Union[str, Path]) -> "Writer":
+        """Attach a Writer to an OME-Zarr image that is already on disk.
+
+        The returned Writer is only for adding to the image, e.g. with
+        :meth:`add_labels`; :meth:`write` is disabled so the image cannot be
+        overwritten. Everything ``add_labels`` needs is read from the image's
+        metadata: its axes, shape, pixel sizes, number of levels and downscale
+        factor. No pixel data is read.
+
+        The image's pyramid must be one this library could have written: only Y
+        and X downscaled, by a constant integer factor, with scales that follow,
+        and no translation or multiscale-level coordinateTransformations. Anything
+        else raises a ValueError, because labels written with it would not line up
+        with the image.
+
+        Args:
+            path: Path to the image group (a standalone image or a field inside a
+                plate), i.e. the directory that contains the ``multiscales``
+                metadata.
+
+        Raises:
+            FileNotFoundError: If ``path`` does not exist.
+            ValueError: If ``path`` is not an OME-Zarr 0.5 image, or its pyramid is
+                not one that labels can be written for.
+        """
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"No OME-Zarr image found at '{path}'")
+        try:
+            reader = Reader(path)
+        except (
+            zarr.errors.GroupNotFoundError,
+            zarr.errors.ContainsArrayError,
+            KeyError,
+            IndexError,
+            TypeError,
+            AttributeError,
+            ValueError,
+        ) as e:
+            raise ValueError(
+                f"'{path}' is not an OME-Zarr 0.5 image group (it has no valid "
+                f"'multiscales' metadata): {e!r}. For a plate, open one of its "
+                "fields, e.g. 'plate.zarr/A/1/0'."
+            ) from e
+
+        multiscale = reader._multiscale
+        base_scale, factor = cls._read_pyramid(path, reader)
+        writer = cls(
+            path,
+            reader._open_level_array(reader._root, 0),
+            reader.dims,
+            reader.axes,
+            downscale_factor=factor,
+            downscale_levels=len(multiscale.datasets) - 1,
+            name=multiscale.name,
+        )
+        # Use the exact level-0 scale from disk, including the non-spatial axes.
+        writer.coordinate_transformations = [ScaleTransformation(scale=base_scale)]
+        writer._from_existing = True
+        return writer
+
+    @staticmethod
+    def _read_pyramid(path: Path, reader: Reader) -> "tuple[List[float], int]":
+        """Level-0 scale and downscale factor of an image on disk.
+
+        Raises a ValueError unless every level is exactly what this library would
+        have written for that factor (see :meth:`from_existing`).
+        """
+        multiscale = reader._multiscale
+        n_axes = len(multiscale.axes)
+
+        def unsupported(detail: str) -> ValueError:
+            return ValueError(
+                f"Cannot add labels to '{path}': {detail}. Labels can only be added "
+                "to images whose pyramid downscales only Y and X by a constant "
+                "integer factor, with no translation or multiscale-level "
+                "coordinateTransformations."
+            )
+
+        if multiscale.coordinateTransformations:
+            raise unsupported("the multiscale has its own coordinateTransformations")
+
+        shapes: List[tuple] = []
+        scales: List[List[float]] = []
+        for level, dataset in enumerate(multiscale.datasets):
+            if any(
+                isinstance(t, TranslationTransformation)
+                for t in dataset.coordinateTransformations
+            ):
+                raise unsupported(f"level {level} has a translation transformation")
+            scale = next(
+                t.scale
+                for t in dataset.coordinateTransformations
+                if isinstance(t, ScaleTransformation)
+            )
+            try:
+                array = reader._root[dataset.path]
+            except KeyError:
+                raise unsupported(
+                    f"the array '{dataset.path}' listed for level {level} does not exist"
+                ) from None
+            if not isinstance(array, zarr.Array):
+                raise unsupported(f"'{dataset.path}' (level {level}) is not an array")
+            if len(array.shape) != n_axes or len(scale) != n_axes:
+                raise unsupported(
+                    f"level {level} has {len(array.shape)} dimensions and "
+                    f"{len(scale)} scale values for {n_axes} axes"
+                )
+            shapes.append(tuple(array.shape))
+            scales.append([float(v) for v in scale])
+
+        if len(shapes) == 1:
+            return scales[0], 2  # nothing to infer; the factor is unused
+
+        if scales[0][-1] <= 0:
+            raise unsupported("the level-0 scale is not positive")
+        ratio = scales[1][-1] / scales[0][-1]
+        factor = round(ratio)
+        if factor < 2 or not math.isclose(ratio, factor, rel_tol=1e-6):
+            raise unsupported(
+                f"the X scale changes by {ratio:g} between level 0 and level 1, "
+                "which is not an integer factor of at least 2"
+            )
+
+        for level in range(len(shapes)):
+            step = factor**level
+            expected_shape = shapes[0][:-2] + (
+                shapes[0][-2] // step,
+                shapes[0][-1] // step,
+            )
+            if shapes[level] != expected_shape:
+                raise unsupported(
+                    f"level {level} has shape {shapes[level]}, but a Y/X-only "
+                    f"downscale by {factor} gives {expected_shape}"
+                )
+            expected_scale = scales[0][:-2] + [
+                scales[0][-2] * step,
+                scales[0][-1] * step,
+            ]
+            if not all(
+                math.isclose(a, b, rel_tol=1e-6)
+                for a, b in zip(scales[level], expected_scale)
+            ):
+                raise unsupported(
+                    f"level {level} has scale {scales[level]}, but a Y/X-only "
+                    f"downscale by {factor} gives {expected_scale}"
+                )
+        return scales[0], factor
 
     @staticmethod
     def _warn_omero_deprecated(what: str) -> None:
@@ -698,6 +851,13 @@ class Writer:
                 from zarr.codecs (e.g., BloscCodec, GzipCodec, ZstdCodec) or a single
                 compressor. If None, zarr will use default compression.
         """
+
+        if self._from_existing:
+            raise RuntimeError(
+                f"This Writer was attached to the existing image at '{self.path}' "
+                "with Writer.from_existing, so write() is disabled to protect the "
+                "image. Use add_labels() to add to it."
+            )
 
         # Remove existing file if overwrite is True
         if self.overwrite and self.path.exists():

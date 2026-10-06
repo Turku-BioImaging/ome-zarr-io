@@ -51,3 +51,6 @@ writer.write(
 )
 
 ```
+
+The `downscale_levels`, `downscale_factor` and `downscale_method` options are explained under
+[Resolution level](../getting-started.md#terminology) in the terminology section.

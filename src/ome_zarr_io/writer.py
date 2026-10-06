@@ -68,6 +68,7 @@ class Writer:
             axis_units: Either a list of Axis objects whose length corresponds to the number
                 of dimensions of the input image, or a dictionary that specifies units for each
                 dimension. Dictionary format:
+
                 - Per-dimension units: {"t": "second", "z": "micrometer", "y": "micrometer", "x": "micrometer"}
             downscale_method: Method to use for downscaling; default "mean". "mean" averages each
                 block of pixels (a box filter followed by subsampling, also called area
@@ -75,8 +76,10 @@ class Writer:
                 block and should be used for label images. "gaussian" is a deprecated alias for "mean".
             scale_transformations: Optional dictionary specifying scale values for dimensions.
                 Examples:
+
                 - {"z": 0.25, "y": 0.1, "x": 0.1} for spatial dimensions
                 - {"t": 0.5, "z": 0.25, "y": 0.1, "x": 0.1} including time axis
+
                 Units are determined by the axis_units parameter. Scale values will be
                 automatically adjusted for each downscale level.
             downscale_levels: Optional number of downscale levels to create. If `None`, no downscaling is performed.
@@ -103,8 +106,6 @@ class Writer:
             color_seed: Changes the automatic palette; the same seed gives the same colors.
             name: Name stored in the multiscale metadata. Defaults to the file name
                 of ``path`` without its extension.
-            zarr_backend: Zarr backend to use for writing. Either "zarr-python" or "zarrs"
-                (default: "zarrs").
         """
         self._from_existing = False
         self.path = Path(path)
@@ -617,6 +618,7 @@ class Writer:
         """Attach a label image to an existing OME-Zarr image group.
 
         This creates the NGFF 0.5 structure expected for labeled segmentation masks:
+
         - parent image group: ome.labels = ["<name>"]
         - labels/<name>/zarr.json: ome.multiscales + ome.image-label metadata
         - label image arrays written as a multiscale pyramid
@@ -837,6 +839,7 @@ class Writer:
         """Write the image as OME-Zarr.
 
         Creates a complete OME-Zarr file with:
+
         - Multiscale pyramid datasets
         - Proper OME-Zarr 0.5 metadata
         - Coordinate transformations for each level

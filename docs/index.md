@@ -33,21 +33,25 @@ print(Reader("example.ome.zarr").get_voxel_size())       # physical pixel size
 :caption: Getting started
 :maxdepth: 1
 
-terminology
-installation
+getting-started
 ```
 
 ```{toctree}
 :caption: Guides
 :maxdepth: 1
 
+guides/reading
 guides/writing-images
 guides/channels
 guides/labels
-guides/existing-images
 guides/plates
-guides/reading
 guides/validating
 guides/cli
-guides/downscaling
+```
+
+```{toctree}
+:caption: Reference
+:maxdepth: 1
+
+api/index
 ```

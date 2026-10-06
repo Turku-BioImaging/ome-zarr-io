@@ -15,10 +15,13 @@ from .validator import OMEZarrValidator
 class ValidationIssue:
     """A single problem found while validating a fileset."""
 
-    path: str  # dotted location of the offending value, e.g. "ome.multiscales.0.axes"
+    #: Dotted location of the offending value, e.g. ``"ome.multiscales.0.axes"``.
+    path: str
+    #: What is wrong.
     message: str
-    # Which node the problem is in: "image", "plate", "well", "labels/<name>", or
-    # the node's path inside a plate or well, e.g. "A/1", "A/1/0", "A/1/0/labels/cells".
+    #: The node the problem is in, one of ``"image"``, ``"plate"``, ``"well"``,
+    #: ``"labels/<name>"``, or the node's path inside a plate or well, for example
+    #: ``"A/1"``, ``"A/1/0"`` or ``"A/1/0/labels/cells"``.
     location: str = "image"
 
     def __str__(self) -> str:
@@ -86,17 +89,30 @@ class FilesetReport:
     `kind` says which.
     """
 
+    #: Path or URL that was validated.
     path: str
+    #: Whether the stricter ``strict_*`` schemas were used.
     strict: bool = False
-    kind: str = "image"  # "image", "plate", "well" or "bf2raw"
+    #: The kind of node the path is, one of ``"image"``, ``"plate"``, ``"well"``
+    #: or ``"bf2raw"``.
+    kind: str = "image"
+    #: OME-Zarr version declared in the metadata, if any.
     spec_version: Optional[str] = None
+    #: Zarr format of the root group (OME-Zarr 0.5 requires 3).
     zarr_format: Optional[int] = None
+    #: Name of the tool that wrote the fileset, if it declares one.
     creator: Optional[str] = None
+    #: Axes of a root image.
     axes: List[Dict[str, Any]] = field(default_factory=list)
+    #: Resolution levels of a root image.
     levels: List[LevelInfo] = field(default_factory=list)
+    #: Channels of a root image, from its OMERO metadata.
     channels: List[ChannelInfo] = field(default_factory=list)
+    #: Label images of a root image.
     labels: List[LabelInfo] = field(default_factory=list)
-    details: Dict[str, Any] = field(default_factory=dict)  # plates, wells, bf2raw
+    #: Short facts about a plate, well or bioformats2raw root.
+    details: Dict[str, Any] = field(default_factory=dict)
+    #: Every problem found; empty when the fileset is valid.
     errors: List[ValidationIssue] = field(default_factory=list)
 
     @property

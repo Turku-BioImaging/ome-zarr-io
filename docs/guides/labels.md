@@ -44,14 +44,18 @@ reports a label with another data type, or with a different number of levels tha
 ## Adding labels to an existing image
 
 `Writer.from_existing` attaches a `Writer` to an OME-Zarr image you did not just write, so you can add labels to it
-without re-supplying its dimensions, pixel sizes or pyramid settings:
+without re-supplying its dimensions, pixel sizes or pyramid settings. For example, to add a second label image to the
+file written above:
 
 ```python
 import numpy as np
 from ome_zarr_io import Writer
 
-writer = Writer.from_existing("example.ome.zarr")  # or a plate field: "screen.ome.zarr/A/1/0"
-writer.add_labels("cell_space_segmentation", label_mask)
+nuclei_mask = np.zeros((512, 512), dtype=np.uint8)  # same shape as the image
+nuclei_mask[150:250, 150:250] = 1
+
+writer = Writer.from_existing("example_labels.ome.zarr")  # or a plate field: "screen.ome.zarr/A/1/0"
+writer.add_labels("nuclei", nuclei_mask)
 ```
 
 Everything `add_labels` needs is read from the image's metadata (axes, shape, pixel sizes, number of levels and

@@ -2,7 +2,21 @@
 
 `validate()` checks a fileset (an image, a plate, a well or a bioformats2raw collection) against the OME-Zarr 0.5
 schemas and returns a `FilesetReport`. It never
-raises on malformed metadata; problems are collected in `report.errors`.
+raises on malformed metadata; problems are collected in `report.errors`. To try it, first write a small image:
+
+```python
+import numpy as np
+from ome_zarr_io import Writer
+
+Writer(
+    path="example.ome.zarr",
+    image=np.zeros((2, 64, 64), dtype=np.uint8),
+    dims=["c", "y", "x"],
+    axis_units={"y": "micrometer", "x": "micrometer"},
+    channels=["DAPI", "GFP"],
+    overwrite=True,
+).write()
+```
 
 ```python
 from ome_zarr_io import validate

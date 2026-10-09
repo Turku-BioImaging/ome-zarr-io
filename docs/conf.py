@@ -22,6 +22,7 @@ extensions = [
 # The pages are plain Markdown.
 source_suffix = {".md": "markdown"}
 root_doc = "index"
+templates_path = ["_templates"]
 exclude_patterns = ["_build"]
 myst_heading_anchors = 3
 
@@ -30,16 +31,24 @@ html_title = "ome-zarr-io"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 
-# Typography and colours, matching the Turku BioImaging site (bioimaging.fi): brand blue
-# #00aeef, Source Sans. The fonts are bundled in _static/fonts (see custom.css).
-# On white, #00aeef is too light for text, so light mode uses a darker shade of the same
-# hue (#00739f) for text and links; every text colour has at least 4.5:1 contrast.
+# Typography and colours. The brand blue #00aeef comes from the Turku BioImaging site
+# (bioimaging.fi). It is only 2.5:1 on white, too light for text, so light mode uses a
+# deeper shade of the same hue (#006186, 6.9:1 on white and 6.1:1 on the sidebar) for
+# text and links. Dark mode uses the exact brand blue (8.3:1 on black). The decorative
+# accent (heading underline, text selection) is --ome-accent: orange in light mode
+# (#d9480f, 4.3:1 on white) and the brand blue in dark mode. The body font is Inter,
+# chosen for readability on screen; fonts are bundled in _static/fonts (see custom.css).
 _fonts = {
-    "font-stack": '"Source Sans 3", "Source Sans Pro", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    "font-stack": 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     "font-stack--headings": "var(--font-stack)",
     "font-stack--monospace": '"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
-    "font-size--normal": "112.5%",  # Source Sans is small for its size
-    "code-font-size": "0.85em",
+    "font-size--normal": "106.25%",
+    "code-font-size": "0.8em",
+    # A little larger than furo's defaults (87.5%, 1rem) for easier scanning.
+    "sidebar-item-font-size": "95%",
+    "sidebar-item-line-height": "1.25rem",
+    "sidebar-caption-font-size": "var(--font-size--small)",
+    "sidebar-search-input-font-size": "95%",
 }
 html_theme_options = {
     "source_repository": "https://github.com/Turku-BioImaging/ome-zarr-io",
@@ -47,18 +56,19 @@ html_theme_options = {
     "source_directory": "docs/",
     "light_css_variables": {
         **_fonts,
-        "color-brand-primary": "#00739f",
-        "color-brand-content": "#00739f",
+        "color-brand-primary": "#006186",
+        "color-brand-content": "#006186",
         "color-brand-visited": "#4a6b82",
         "color-foreground-primary": "#222222",
         "color-foreground-secondary": "#54595f",
-        "color-foreground-muted": "#666666",
+        "color-foreground-muted": "#595959",
         "color-background-primary": "#ffffff",
         "color-background-secondary": "#f1f1f1",
         "color-background-border": "#cccccc",
         "color-code-background": "#f6f6f6",
-        "color-api-name": "#00739f",
+        "color-api-name": "#006186",
         "color-api-pre-name": "#54595f",
+        "ome-accent": "#d9480f",
     },
     "dark_css_variables": {
         **_fonts,
@@ -74,9 +84,10 @@ html_theme_options = {
         "color-code-background": "#111111",
         "color-api-name": "#00aeef",
         "color-api-pre-name": "#cccccc",
+        "ome-accent": "#00aeef",
     },
 }
-pygments_style = "default"
+pygments_style = "a11y-light"
 pygments_dark_style = "github-dark"
 
 # -- API reference -----------------------------------------------------------

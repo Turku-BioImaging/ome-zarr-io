@@ -18,17 +18,34 @@ maintainers = [
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "Topic :: File Formats",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Image Processing",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-keywords = ["ome", "zarr", "image", "microscopy", "bioimage"]
+keywords = [
+    "ome",
+    "zarr",
+    "image",
+    "microscopy",
+    "bioimage",
+    "ome-zarr",
+    "ngff",
+    "multiscale",
+    "hcs",
+    "high-content-screening",
+    "plate",
+    "validation",
+]
 requires-python = ">=3.11"
 dependencies = [
     "dask",

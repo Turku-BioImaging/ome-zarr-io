@@ -201,7 +201,7 @@ class Writer:
         base_scale, factor = cls._read_pyramid(path, reader)
         writer = cls(
             path,
-            reader._open_level_array(reader._root, 0),
+            reader._base_level_array(0),
             reader.dims,
             reader.axes,
             downscale_factor=factor,

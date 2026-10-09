@@ -390,3 +390,42 @@ class TestUnsupportedInputs:
         with pytest.raises(ValueError):
             Writer.from_existing(image)
         assert sorted(p.relative_to(image).as_posix() for p in image.rglob("*")) == before
+
+
+class TestImageWithRenamedLevelArrays:
+    """Level arrays named by another tool (not "0", "1", ...) work too."""
+
+    def test_labels_can_be_added(self, tmp_path, rename_levels):
+        path = tmp_path / "img.zarr"
+        write_fileset(
+            path,
+            (2, 3, 64, 64),
+            "czyx",
+            scale={"z": 2.0, "y": 0.5, "x": 0.5},
+            downscale_levels=2,
+            channels=["a", "b"],
+        )
+        rename_levels(path, {"0": "s0", "1": "s1", "2": "s2"})
+
+        writer = Writer.from_existing(path)
+        assert writer.image.shape == (2, 3, 64, 64)  # level 0, not another level
+        assert writer.downscale_levels == 2
+        writer.add_labels("mask", np.ones((1, 3, 64, 64), dtype=np.uint8))
+
+        assert len(label_levels(path, "mask")) == 3
+        assert sorted(p.name for p in path.iterdir() if p.is_dir()) == [
+            "labels",
+            "s0",
+            "s1",
+            "s2",
+        ]  # the image's arrays are untouched
+        assert validate(path).is_valid
+
+    def test_pixel_data_comes_from_the_renamed_level_zero(self, tmp_path, rename_levels):
+        path = tmp_path / "img.zarr"
+        write_fileset(path, (64, 64), "yx", downscale_levels=1)
+        rename_levels(path, {"0": "full", "1": "half"})
+        writer = Writer.from_existing(path)
+        np.testing.assert_array_equal(
+            writer.image.compute(), zarr.open_array(str(path / "full"))[:]
+        )

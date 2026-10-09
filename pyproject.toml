@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ome-zarr-io"
-version = "0.10.0"
+version = "0.10.1"
 description = "Write, read, and validate OME-Zarr 0.5 images and high-content-screening plates"
 readme = "README.md"
 license = "MIT"

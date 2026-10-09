@@ -1,5 +1,8 @@
 """Tests for the Reader class."""
 
+import json
+import shutil
+
 import numpy as np
 import pytest
 from jsonschema.exceptions import ValidationError
@@ -55,6 +58,48 @@ def written_image_path(tmp_path, channel_image, label_array):
     writer.add_labels(name="nuclei", array=label_array)
 
     return path
+
+
+def _write_fileset_with_paths(path, levels, dataset_paths):
+    """Write a (C, Y, X) OME-Zarr fileset whose level arrays use `dataset_paths`.
+
+    A matching `labels/nuclei` label image is written with the same paths.
+    """
+    import zarr
+
+    axes = [
+        Axis(name="c", type="channel"),
+        Axis(name="y", type="space", unit="micrometer"),
+        Axis(name="x", type="space", unit="micrometer"),
+    ]
+    datasets = [
+        Dataset(
+            path=dataset_path,
+            coordinateTransformations=[ScaleTransformation(scale=[1.0, 2.0**i, 2.0**i])],
+        )
+        for i, dataset_path in enumerate(dataset_paths)
+    ]
+    metadata = OMEZarrImageMetadata(
+        ome=OMEMetadata(
+            multiscales=[Multiscale(datasets=datasets, axes=axes)],
+            version="0.5",
+            omero=Omero(channels=[Channel(label="DAPI"), Channel(label="GFP")]),
+        )
+    )
+
+    root = zarr.create_group(str(path), zarr_format=3)
+    root.attrs.update(metadata.to_dict())
+    for dataset_path, level in zip(dataset_paths, levels):
+        root.create_array(name=dataset_path, shape=level.shape, dtype=level.dtype)[:] = level
+
+    labels = root.create_group("labels")
+    labels.attrs.update({"ome": {"version": "0.5", "labels": ["nuclei"]}})
+    label_group = labels.create_group("nuclei")
+    label_group.attrs.update(
+        {"ome": {**metadata.to_dict()["ome"], "image-label": {}}}
+    )
+    for dataset_path, level in zip(dataset_paths, levels):
+        label_group.create_array(name=dataset_path, shape=level.shape, dtype=level.dtype)[:] = level
 
 
 @pytest.fixture
@@ -135,6 +180,32 @@ class TestChannels:
         with pytest.raises(ValueError):
             reader.get_channel("anything")
 
+    def test_get_channel_uses_dataset_path(self, tmp_path):
+        """Levels are located via `datasets[level].path`, not the level index."""
+        path = tmp_path / "custom_paths.zarr"
+        levels = [
+            np.random.randint(0, 255, size=(2, 20, 20), dtype=np.uint8),
+            np.random.randint(0, 255, size=(2, 10, 10), dtype=np.uint8),
+        ]
+        _write_fileset_with_paths(path, levels, ["s0", "s1"])
+
+        reader = Reader(path)
+        np.testing.assert_array_equal(
+            reader.get_channel("GFP", level=0, as_type="numpy"), levels[0][1]
+        )
+        np.testing.assert_array_equal(
+            reader.get_channel("DAPI", level=1, as_type="numpy"), levels[1][0]
+        )
+
+    def test_get_channel_negative_level(self, reader):
+        assert reader.get_channel("DAPI", level=-1).shape == reader.get_channel(
+            "DAPI", level=1
+        ).shape
+
+    def test_get_channel_level_out_of_range_raises(self, reader):
+        with pytest.raises(IndexError):
+            reader.get_channel("DAPI", level=99)
+
 
 class TestLabels:
     def test_label_names(self, reader):
@@ -153,6 +224,20 @@ class TestLabels:
     def test_get_label_unknown_raises_key_error(self, reader):
         with pytest.raises(KeyError):
             reader.get_label("does-not-exist")
+
+    def test_get_label_uses_dataset_path(self, tmp_path):
+        """Label levels are located via the label group's own `datasets[level].path`."""
+        path = tmp_path / "custom_label_paths.zarr"
+        levels = [
+            np.random.randint(0, 5, size=(2, 20, 20), dtype=np.uint8),
+            np.random.randint(0, 5, size=(2, 10, 10), dtype=np.uint8),
+        ]
+        _write_fileset_with_paths(path, levels, ["s0", "s1"])
+
+        reader = Reader(path)
+        np.testing.assert_array_equal(
+            reader.get_label("nuclei", level=1, as_type="numpy"), levels[1]
+        )
 
     def test_no_labels_returns_empty_list(self, tmp_path):
         path = tmp_path / "no_labels.zarr"
@@ -249,3 +334,84 @@ class TestPhysicalSize:
         reader = Reader(path)
         with pytest.raises(ValueError):
             reader.get_voxel_size()
+
+
+class TestLevelArrayNames:
+    """Level arrays are found through the metadata, not assumed to be named 0, 1, ..."""
+
+    def test_renamed_arrays_are_read(self, written_image_path, rename_levels):
+        before = Reader(written_image_path)
+        expected = {
+            level: before.get_channel("GFP", level=level, as_type="numpy")
+            for level in (0, 1)
+        }
+        expected_label = before.get_label("nuclei", level=1, as_type="numpy")
+
+        rename_levels(written_image_path, {"0": "s0", "1": "s1"})
+        rename_levels(written_image_path / "labels" / "nuclei", {"0": "l0", "1": "l1"})
+
+        after = Reader(written_image_path)
+        for level in (0, 1):
+            np.testing.assert_array_equal(
+                after.get_channel("GFP", level=level, as_type="numpy"), expected[level]
+            )
+        np.testing.assert_array_equal(
+            after.get_label("nuclei", level=1, as_type="numpy"), expected_label
+        )
+        assert after.validate()
+
+    def test_swapped_names_follow_the_metadata_order(self, tmp_path):
+        """Level 0 is the first dataset in the metadata even if it is named "1"."""
+        path = tmp_path / "swapped.zarr"
+        levels = [
+            np.full((2, 20, 20), 7, dtype=np.uint8),
+            np.full((2, 10, 10), 9, dtype=np.uint8),
+        ]
+        _write_fileset_with_paths(path, levels, ["1", "0"])
+        reader = Reader(path)
+        assert reader.get_channel("DAPI", level=0, as_type="numpy").shape == (20, 20)
+        assert (reader.get_channel("DAPI", level=0, as_type="numpy") == 7).all()
+        assert (reader.get_channel("DAPI", level=1, as_type="numpy") == 9).all()
+
+    def test_missing_array_is_a_clear_error(self, written_image_path):
+        shutil.rmtree(written_image_path / "1")
+        with pytest.raises(
+            KeyError, match="Array '1' listed in the multiscales metadata for level 1"
+        ):
+            Reader(written_image_path).get_channel("DAPI", level=1)
+
+    def test_channel_level_out_of_range_message(self, reader):
+        with pytest.raises(IndexError, match="Level 99 is out of range: .* 2 level"):
+            reader.get_channel("DAPI", level=99)
+
+    def test_negative_level_counts_from_the_coarsest(self, reader):
+        last = reader.get_channel("DAPI", level=-1, as_type="numpy")
+        np.testing.assert_array_equal(
+            last, reader.get_channel("DAPI", level=1, as_type="numpy")
+        )
+        assert last.shape == (25, 25)
+
+
+class TestLabelLevels:
+    def test_negative_level(self, reader):
+        np.testing.assert_array_equal(
+            reader.get_label("nuclei", level=-1, as_type="numpy"),
+            reader.get_label("nuclei", level=1, as_type="numpy"),
+        )
+
+    def test_level_out_of_range(self, reader):
+        with pytest.raises(IndexError, match="out of range"):
+            reader.get_label("nuclei", level=2)
+
+    def test_label_without_multiscales_metadata(self, written_image_path):
+        label_meta = written_image_path / "labels" / "nuclei" / "zarr.json"
+        meta = json.loads(label_meta.read_text())
+        del meta["attributes"]["ome"]["multiscales"]
+        label_meta.write_text(json.dumps(meta))
+        with pytest.raises(ValueError, match="Label 'nuclei' has no valid multiscales"):
+            Reader(written_image_path).get_label("nuclei")
+
+    def test_label_missing_array(self, written_image_path):
+        shutil.rmtree(written_image_path / "labels" / "nuclei" / "1")
+        with pytest.raises(KeyError, match="Array '1' listed in the multiscales"):
+            Reader(written_image_path).get_label("nuclei", level=1)

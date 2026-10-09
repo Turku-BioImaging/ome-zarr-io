@@ -16,6 +16,29 @@ def temp_dir():
 
 
 @pytest.fixture
+def rename_levels():
+    """Rename the level arrays of an image or label group and update its metadata.
+
+    ``rename_levels(group_path, {"0": "s0", "1": "s1"})`` moves the array directories
+    and rewrites the ``path`` of each entry in ``multiscales[0].datasets``, as
+    another OME-Zarr writer might have named them.
+    """
+    import json
+
+    def _rename(group_path, new_names):
+        group_path = Path(group_path)
+        meta_file = group_path / "zarr.json"
+        meta = json.loads(meta_file.read_text())
+        for dataset in meta["attributes"]["ome"]["multiscales"][0]["datasets"]:
+            old, new = dataset["path"], new_names[dataset["path"]]
+            shutil.move(str(group_path / old), str(group_path / new))
+            dataset["path"] = new
+        meta_file.write_text(json.dumps(meta))
+
+    return _rename
+
+
+@pytest.fixture
 def sample_image():
     """Create a sample image for testing."""
     return np.random.randint(0, 255, size=(100, 100, 3), dtype=np.uint8)

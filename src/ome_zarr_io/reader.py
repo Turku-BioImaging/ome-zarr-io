@@ -132,15 +132,18 @@ class Reader:
 
         Args:
             name: Channel name, matched against `omero.channels[i].label`.
-            level: Multiscale pyramid level to read (0 = full resolution).
+            level: Multiscale pyramid level to read (0 = full resolution; negative
+                values count from the coarsest level).
             as_type: Return a "dask" (lazy) or "numpy" (in-memory) array.
 
         Returns:
             Array with the channel ('c') axis removed.
 
         Raises:
-            KeyError: If no channel with that name exists.
+            KeyError: If no channel with that name exists, or the array listed for
+                `level` is missing.
             ValueError: If the image has no channel ('c') axis.
+            IndexError: If `level` is out of range.
         """
         if "c" not in self.dims:
             raise ValueError("Image has no channel ('c') axis")
@@ -148,7 +151,7 @@ class Reader:
         channel_index = self._channel_index(name)
 
         c_axis = self.dims.index("c")
-        array = self._open_level_array(self._root, level)
+        array = self._base_level_array(level)
         index: List[Union[slice, int]] = [slice(None)] * array.ndim
         index[c_axis] = channel_index
         channel_array = array[tuple(index)]
@@ -175,11 +178,15 @@ class Reader:
 
         Args:
             name: Label name as listed in `label_names`.
-            level: Multiscale pyramid level to read.
+            level: Multiscale pyramid level of the label to read (0 = full
+                resolution; negative values count from the coarsest level).
             as_type: Return a "dask" (lazy) or "numpy" (in-memory) array.
 
         Raises:
-            KeyError: If no label with that name exists.
+            KeyError: If no label with that name exists, or the array listed for
+                `level` is missing.
+            ValueError: If the label has no valid multiscales metadata.
+            IndexError: If `level` is out of range.
         """
         if name not in self.label_names:
             raise KeyError(
@@ -187,7 +194,10 @@ class Reader:
             )
 
         label_group = self._root["labels"][name]  # type: ignore[index]
-        array = self._open_level_array(label_group, level)
+        # Label groups carry their own multiscales metadata; read the dataset
+        # paths from it rather than assuming they match the base image.
+        dataset_paths = self._label_dataset_paths(name, label_group)  # type: ignore[arg-type]
+        array = self._open_level_array(label_group, dataset_paths, level)  # type: ignore[arg-type]
 
         return array.compute() if as_type == "numpy" else array
 
@@ -253,7 +263,53 @@ class Reader:
 
     # -- Internal helpers ---------------------------------------------------
 
-    def _open_level_array(self, group: zarr.Group, level: int) -> da.Array:
-        """Open a resolution level as a lazy dask array."""
-        zarr_array = group[str(level)]
+    def _base_level_array(self, level: int) -> da.Array:
+        """Open a resolution level of the base image as a lazy dask array.
+
+        The array is found through the `path` of the level's entry in the image's
+        `multiscales[0].datasets`, so level arrays need not be named "0", "1", ...
+        """
+        dataset_paths = [dataset.path for dataset in self._multiscale.datasets]
+        return self._open_level_array(self._root, dataset_paths, level)
+
+    @staticmethod
+    def _label_dataset_paths(name: str, label_group: zarr.Group) -> List[str]:
+        """The level array paths listed in a label group's own multiscales metadata."""
+        try:
+            datasets = label_group.attrs["ome"]["multiscales"][0]["datasets"]  # type: ignore[index]
+            return [dataset["path"] for dataset in datasets]
+        except (KeyError, IndexError, TypeError) as e:
+            raise ValueError(
+                f"Label '{name}' has no valid multiscales metadata, so its level "
+                "arrays cannot be located"
+            ) from e
+
+    def _open_level_array(
+        self, group: zarr.Group, dataset_paths: List[str], level: int
+    ) -> da.Array:
+        """Open a resolution level as a lazy dask array.
+
+        Args:
+            group: Multiscale group containing the level arrays.
+            dataset_paths: `path` of each entry in the group's
+                `multiscales[0].datasets`, in level order.
+            level: Index into `dataset_paths` (negative values count from the end).
+
+        Raises:
+            IndexError: If `level` is out of range.
+            KeyError: If the array listed for `level` does not exist.
+        """
+        n_levels = len(dataset_paths)
+        if not -n_levels <= level < n_levels:
+            raise IndexError(
+                f"Level {level} is out of range: the image has {n_levels} level(s)"
+            )
+        path = dataset_paths[level]
+        try:
+            zarr_array = group[path]
+        except KeyError:
+            raise KeyError(
+                f"Array '{path}' listed in the multiscales metadata for level "
+                f"{level} does not exist"
+            ) from None
         return da.from_array(zarr_array, chunks=zarr_array.chunks)  # type: ignore[union-attr]

@@ -174,8 +174,9 @@ class Writer:
 
         Raises:
             FileNotFoundError: If ``path`` does not exist.
-            ValueError: If ``path`` is not an OME-Zarr 0.5 image, or its pyramid is
-                not one that labels can be written for.
+            ValueError: If ``path`` is not an OME-Zarr 0.5 image, its group holds
+                more than one ``multiscales`` entry, or its pyramid is not one that
+                labels can be written for.
             TypeError: If any other argument is passed. ``from_existing`` never
                 overwrites the image, so it has no ``overwrite`` argument; to
                 replace a label image, pass ``overwrite=True`` to :meth:`add_labels`.
@@ -211,6 +212,17 @@ class Writer:
                 f"'multiscales' metadata): {e!r}. For a plate, open one of its "
                 "fields, e.g. 'plate.zarr/A/1/0'."
             ) from e
+
+        entries = reader._metadata.ome.multiscales
+        if len(entries) > 1:
+            names = ", ".join(repr(m.name) if m.name else "(unnamed)" for m in entries)
+            raise ValueError(
+                f"The image group at '{path}' holds {len(entries)} multiscale images "
+                f"({names}). Labels are stored once per image group, and the NGFF "
+                "0.5 specification does not say which of several multiscale images "
+                "they belong to, so from_existing() cannot add labels to this "
+                "group."
+            )
 
         multiscale = reader._multiscale
         base_scale, factor = cls._read_pyramid(path, reader)

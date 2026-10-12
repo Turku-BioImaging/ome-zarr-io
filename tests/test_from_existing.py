@@ -81,9 +81,11 @@ class TestEquivalentToTheOriginalWriter:
             downscale_levels=levels,
             downscale_factor=factor,
         )
-        mask = np.random.default_rng(1).integers(
-            0, 5, label_shape(shape, dims)
-        ).astype(np.uint8)
+        mask = (
+            np.random.default_rng(1)
+            .integers(0, 5, label_shape(shape, dims))
+            .astype(np.uint8)
+        )
 
         original.add_labels("reference", mask)
         Writer.from_existing(path).add_labels("reopened", mask)
@@ -101,11 +103,18 @@ class TestEquivalentToTheOriginalWriter:
         assert validate(path).is_valid
 
     def test_label_scales_follow_the_image(self, image):
-        Writer.from_existing(image).add_labels("cells", np.ones((1, 1, 64, 64), "uint8"))
+        Writer.from_existing(image).add_labels(
+            "cells", np.ones((1, 1, 64, 64), "uint8")
+        )
         image_ds = read_ome(image)["multiscales"][0]["datasets"]
         label_ds = read_ome(image / "labels" / "cells")["multiscales"][0]["datasets"]
         assert label_ds == image_ds
-        assert image_ds[0]["coordinateTransformations"][0]["scale"] == [1.0, 2.0, 0.5, 0.5]
+        assert image_ds[0]["coordinateTransformations"][0]["scale"] == [
+            1.0,
+            2.0,
+            0.5,
+            0.5,
+        ]
 
 
 class TestWhatIsReadFromDisk:
@@ -158,11 +167,14 @@ class TestWhatIsReadFromDisk:
 
     def test_image_metadata_is_not_modified(self, image):
         before = (image / "zarr.json").read_text()
-        Writer.from_existing(image).add_labels("cells", np.ones((1, 1, 64, 64), "uint8"))
+        Writer.from_existing(image).add_labels(
+            "cells", np.ones((1, 1, 64, 64), "uint8")
+        )
         after = json.loads((image / "zarr.json").read_text())
-        assert after["attributes"]["ome"]["multiscales"] == json.loads(before)[
-            "attributes"
-        ]["ome"]["multiscales"]
+        assert (
+            after["attributes"]["ome"]["multiscales"]
+            == json.loads(before)["attributes"]["ome"]["multiscales"]
+        )
         assert (image / "labels").exists()
 
     def test_accepts_str_and_path(self, image):
@@ -195,7 +207,9 @@ class TestUsingTheOpenedWriter:
 
     def test_wrong_label_shape_is_still_rejected(self, image):
         with pytest.raises(ValueError, match="incompatible with source image shape"):
-            Writer.from_existing(image).add_labels("a", np.ones((1, 1, 32, 32), "uint8"))
+            Writer.from_existing(image).add_labels(
+                "a", np.ones((1, 1, 32, 32), "uint8")
+            )
         assert not (image / "labels").exists()
 
     def test_label_level_count_matches_the_image(self, image):
@@ -208,7 +222,9 @@ class TestUsingTheOpenedWriter:
         before = sorted(p.relative_to(image).as_posix() for p in image.rglob("*"))
         with pytest.raises(RuntimeError, match="write\\(\\) is disabled"):
             writer.write()
-        assert sorted(p.relative_to(image).as_posix() for p in image.rglob("*")) == before
+        assert (
+            sorted(p.relative_to(image).as_posix() for p in image.rglob("*")) == before
+        )
 
     def test_write_is_still_disabled_with_overwrite(self, image):
         writer = Writer.from_existing(image)
@@ -247,7 +263,10 @@ class TestPlateFields:
         path = tmp_path / "plate.zarr"
         with PlateWriter(path, rows=["A"], columns=["1"]) as plate:
             plate.add_field(
-                "A", "1", np.zeros((8, 8), "uint8"), ["y", "x"],
+                "A",
+                "1",
+                np.zeros((8, 8), "uint8"),
+                ["y", "x"],
                 {"y": "micrometer", "x": "micrometer"},
             )
         with pytest.raises(ValueError, match="open one of its fields"):
@@ -262,7 +281,9 @@ class TestImageFromAnotherTool:
         group = zarr.create_group(str(path), zarr_format=3)
         shapes = [(3, 200, 200), (3, 100, 100), (3, 50, 50)]
         for i, shape in enumerate(shapes):
-            group.create_array(str(i), shape=shape, dtype="uint16", dimension_names=["c", "y", "x"])
+            group.create_array(
+                str(i), shape=shape, dtype="uint16", dimension_names=["c", "y", "x"]
+            )
         group.attrs["ome"] = {
             "version": "0.5",
             "multiscales": [
@@ -277,7 +298,10 @@ class TestImageFromAnotherTool:
                         {
                             "path": str(i),
                             "coordinateTransformations": [
-                                {"type": "scale", "scale": [1.0, 0.325 * 2**i, 0.325 * 2**i]}
+                                {
+                                    "type": "scale",
+                                    "scale": [1.0, 0.325 * 2**i, 0.325 * 2**i],
+                                }
                             ],
                         }
                         for i in range(3)
@@ -296,6 +320,17 @@ class TestImageFromAnotherTool:
 
 
 class TestUnsupportedInputs:
+    def test_group_with_several_multiscale_images(self, image):
+        def add_entry(ome):
+            ome["multiscales"][0]["name"] = "first"
+            ome["multiscales"].append({**ome["multiscales"][0], "name": "second"})
+
+        edit_ome(image, add_entry)
+        with pytest.raises(
+            ValueError, match=r"holds 2 multiscale images \('first', 'second'\)"
+        ):
+            Writer.from_existing(image)
+
     def test_overwrite_points_to_add_labels(self, image):
         with pytest.raises(TypeError, match=r"pass overwrite=True to add_labels\(\)"):
             Writer.from_existing(image, overwrite=True)
@@ -324,15 +359,17 @@ class TestUnsupportedInputs:
 
     def test_level_array_missing(self, image):
         shutil.rmtree(image / "1")
-        with pytest.raises(ValueError, match="array '1' listed for level 1 does not exist"):
+        with pytest.raises(
+            ValueError, match="array '1' listed for level 1 does not exist"
+        ):
             Writer.from_existing(image)
 
     def test_translation(self, image):
         edit_ome(
             image,
-            lambda o: o["multiscales"][0]["datasets"][0]["coordinateTransformations"].append(
-                {"type": "translation", "translation": [0.0, 0.0, 5.0, 5.0]}
-            ),
+            lambda o: o["multiscales"][0]["datasets"][0][
+                "coordinateTransformations"
+            ].append({"type": "translation", "translation": [0.0, 0.0, 5.0, 5.0]}),
         )
         with pytest.raises(ValueError, match="level 0 has a translation"):
             Writer.from_existing(image)
@@ -341,15 +378,21 @@ class TestUnsupportedInputs:
         edit_ome(
             image,
             lambda o: o["multiscales"][0].update(
-                coordinateTransformations=[{"type": "scale", "scale": [1.0, 1.0, 1.0, 1.0]}]
+                coordinateTransformations=[
+                    {"type": "scale", "scale": [1.0, 1.0, 1.0, 1.0]}
+                ]
             ),
         )
-        with pytest.raises(ValueError, match="multiscale has its own coordinateTransformations"):
+        with pytest.raises(
+            ValueError, match="multiscale has its own coordinateTransformations"
+        ):
             Writer.from_existing(image)
 
     def test_z_is_downscaled(self, image):
         def change(o):
-            o["multiscales"][0]["datasets"][1]["coordinateTransformations"][0]["scale"][1] = 4.0
+            o["multiscales"][0]["datasets"][1]["coordinateTransformations"][0]["scale"][
+                1
+            ] = 4.0
 
         edit_ome(image, change)
         with pytest.raises(ValueError, match="level 1 has scale .* gives"):
@@ -358,7 +401,9 @@ class TestUnsupportedInputs:
     def test_non_integer_factor(self, image):
         def change(o):
             for level, factor in ((1, 2.5), (2, 6.25)):
-                scale = o["multiscales"][0]["datasets"][level]["coordinateTransformations"][0]["scale"]
+                scale = o["multiscales"][0]["datasets"][level][
+                    "coordinateTransformations"
+                ][0]["scale"]
                 scale[-2:] = [0.5 * factor, 0.5 * factor]
 
         edit_ome(image, change)
@@ -368,23 +413,33 @@ class TestUnsupportedInputs:
     def test_shapes_do_not_follow_the_factor(self, image):
         shutil.rmtree(image / "1")
         group = zarr.open_group(str(image), mode="a")
-        group.create_array("1", shape=(2, 3, 30, 30), dtype="uint8", dimension_names=["c", "z", "y", "x"])
+        group.create_array(
+            "1",
+            shape=(2, 3, 30, 30),
+            dtype="uint8",
+            dimension_names=["c", "z", "y", "x"],
+        )
         with pytest.raises(ValueError, match="level 1 has shape .* gives"):
             Writer.from_existing(image)
 
     def test_non_spatial_axis_is_downscaled(self, image):
         shutil.rmtree(image / "1")
         group = zarr.open_group(str(image), mode="a")
-        group.create_array("1", shape=(2, 2, 32, 32), dtype="uint8", dimension_names=["c", "z", "y", "x"])
+        group.create_array(
+            "1",
+            shape=(2, 2, 32, 32),
+            dtype="uint8",
+            dimension_names=["c", "z", "y", "x"],
+        )
         with pytest.raises(ValueError, match="level 1 has shape"):
             Writer.from_existing(image)
 
     def test_error_names_the_image(self, image):
         edit_ome(
             image,
-            lambda o: o["multiscales"][0]["datasets"][0]["coordinateTransformations"].append(
-                {"type": "translation", "translation": [0.0, 0.0, 1.0, 1.0]}
-            ),
+            lambda o: o["multiscales"][0]["datasets"][0][
+                "coordinateTransformations"
+            ].append({"type": "translation", "translation": [0.0, 0.0, 1.0, 1.0]}),
         )
         with pytest.raises(ValueError, match="Cannot add labels to .*img.ome.zarr"):
             Writer.from_existing(image)
@@ -392,12 +447,16 @@ class TestUnsupportedInputs:
     def test_nothing_is_written_when_rejected(self, image):
         edit_ome(
             image,
-            lambda o: o["multiscales"][0].update(coordinateTransformations=[{"type": "scale", "scale": [1.0] * 4}]),
+            lambda o: o["multiscales"][0].update(
+                coordinateTransformations=[{"type": "scale", "scale": [1.0] * 4}]
+            ),
         )
         before = sorted(p.relative_to(image).as_posix() for p in image.rglob("*"))
         with pytest.raises(ValueError):
             Writer.from_existing(image)
-        assert sorted(p.relative_to(image).as_posix() for p in image.rglob("*")) == before
+        assert (
+            sorted(p.relative_to(image).as_posix() for p in image.rglob("*")) == before
+        )
 
 
 class TestImageWithRenamedLevelArrays:
@@ -429,7 +488,9 @@ class TestImageWithRenamedLevelArrays:
         ]  # the image's arrays are untouched
         assert validate(path).is_valid
 
-    def test_pixel_data_comes_from_the_renamed_level_zero(self, tmp_path, rename_levels):
+    def test_pixel_data_comes_from_the_renamed_level_zero(
+        self, tmp_path, rename_levels
+    ):
         path = tmp_path / "img.zarr"
         write_fileset(path, (64, 64), "yx", downscale_levels=1)
         rename_levels(path, {"0": "full", "1": "half"})

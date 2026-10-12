@@ -75,3 +75,8 @@ The image's pyramid must be one this library could have written: only Y and X do
 factor, with no `translation` or multiscale-level `coordinateTransformations`. Otherwise `from_existing` raises a
 `ValueError` explaining what differs, because labels written for it would not line up with the image. Pass a field
 of a plate (`.../A/1/0`), not the plate itself.
+
+One `Writer` is attached to one image group, so to label several images (the fields of a plate, or the numbered
+images of a bioformats2raw collection) call `from_existing` on each image group in turn. An image group that holds
+several entries in its `multiscales` list is rejected: labels are stored once per group, and the specification does
+not say which of the entries they belong to.

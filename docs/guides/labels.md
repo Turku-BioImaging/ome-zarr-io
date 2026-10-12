@@ -58,6 +58,15 @@ writer = Writer.from_existing("example_labels.ome.zarr")  # or a plate field: "s
 writer.add_labels("nuclei", nuclei_mask)
 ```
 
+Adding a label image under a name that already exists raises an error, so re-running a script does not replace
+anything by accident. To replace it, pass `overwrite=True` to `add_labels`, not to `from_existing`, which never
+changes the image itself:
+
+```python
+writer = Writer.from_existing("example_labels.ome.zarr")
+writer.add_labels("nuclei", nuclei_mask, overwrite=True)  # replaces the existing "nuclei" label image
+```
+
 Everything `add_labels` needs is read from the image's metadata (axes, shape, pixel sizes, number of levels and
 downscale factor); no pixel data is read, and the image is not modified. `write()` is disabled on the returned
 `Writer`, so the image cannot be overwritten by accident.

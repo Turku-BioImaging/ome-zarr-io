@@ -296,6 +296,14 @@ class TestImageFromAnotherTool:
 
 
 class TestUnsupportedInputs:
+    def test_overwrite_points_to_add_labels(self, image):
+        with pytest.raises(TypeError, match=r"pass overwrite=True to add_labels\(\)"):
+            Writer.from_existing(image, overwrite=True)
+
+    def test_other_unexpected_argument_is_still_a_type_error(self, image):
+        with pytest.raises(TypeError, match="unexpected keyword argument 'nope'"):
+            Writer.from_existing(image, nope=1)
+
     def test_missing_path(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             Writer.from_existing(tmp_path / "nope.zarr")

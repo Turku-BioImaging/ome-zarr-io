@@ -152,7 +152,7 @@ class Writer:
                     normalize_color(channel.color)
 
     @classmethod
-    def from_existing(cls, path: Union[str, Path]) -> "Writer":
+    def from_existing(cls, path: Union[str, Path], **unexpected: Any) -> "Writer":
         """Attach a Writer to an OME-Zarr image that is already on disk.
 
         The returned Writer is only for adding to the image, e.g. with
@@ -176,7 +176,22 @@ class Writer:
             FileNotFoundError: If ``path`` does not exist.
             ValueError: If ``path`` is not an OME-Zarr 0.5 image, or its pyramid is
                 not one that labels can be written for.
+            TypeError: If any other argument is passed. ``from_existing`` never
+                overwrites the image, so it has no ``overwrite`` argument; to
+                replace a label image, pass ``overwrite=True`` to :meth:`add_labels`.
         """
+        if "overwrite" in unexpected:
+            raise TypeError(
+                "Writer.from_existing() has no 'overwrite' argument because it never "
+                "modifies the image itself. To replace an existing label image, "
+                "pass overwrite=True to add_labels(), e.g. "
+                "Writer.from_existing(path).add_labels(name, array, overwrite=True)."
+            )
+        if unexpected:
+            raise TypeError(
+                "Writer.from_existing() got an unexpected keyword argument "
+                f"'{next(iter(unexpected))}'"
+            )
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"No OME-Zarr image found at '{path}'")

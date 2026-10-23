@@ -3,11 +3,11 @@
 {% block extrahead %}
 {{ super() }}
 <script>
-  // Default to the light theme for first-time visitors. This runs in the head, before
-  // furo reads the saved theme, so there is no flash of the dark theme. The toggle in
+  // Default to the dark theme (as the Turku BioImaging site does) for first-time visitors. This runs in the head, before
+  // furo reads the saved theme, so there is no flash of the light theme. The toggle in
   // the header still switches themes, and the visitor's choice is remembered.
   try {
-    if (!localStorage.getItem("theme")) localStorage.setItem("theme", "light");
+    if (!localStorage.getItem("theme")) localStorage.setItem("theme", "dark");
   } catch (e) {}
 </script>
 {% endblock %}

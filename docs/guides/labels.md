@@ -41,6 +41,23 @@ Label arrays must have an integer data type (`uint8`, `int8`, `uint16`, `int16`,
 `int64`). Float and boolean arrays are rejected; convert a boolean mask with `mask.astype("uint8")`. `validate()`
 reports a label with another data type, or with a different number of levels than its image, as invalid.
 
+## Labels computed on a lower-resolution level
+
+If you segmented a lower-resolution level of the image, pass the level you used as `source_level`. The label is
+upscaled to full resolution with nearest-neighbour repetition (lazily for dask arrays) before its pyramid is written.
+The factors come from the image's scale transformations, so anisotropic pyramids work.
+
+```python
+level1 = np.asarray(writer.image[::2, ::2])  # stand-in for a mask computed on level 1
+coarse_mask = np.zeros(level1.shape, dtype=np.uint8)
+coarse_mask[50:100, 50:100] = 1
+
+writer.add_labels(name="coarse_segmentation", array=coarse_mask, source_level=1)
+```
+
+The array must match the shape of that level of the image. Boolean masks are rejected here too; use
+`mask.astype("uint8")`.
+
 ## Adding labels to an existing image
 
 `Writer.from_existing` attaches a `Writer` to an OME-Zarr image you did not just write, so you can add labels to it

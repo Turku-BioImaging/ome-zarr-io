@@ -627,6 +627,84 @@ class Writer:
             )
         return len(datasets)
 
+    def _upscale_label_to_level0(self, array: da.Array, source_level: int) -> da.Array:
+        """Nearest-neighbour upscale of a label computed on ``source_level`` to level 0.
+
+        Factors are the ratios of the image's per-level scale transformations.
+        """
+        if isinstance(source_level, bool) or not isinstance(source_level, int):
+            raise TypeError(f"source_level must be an int, got {type(source_level)}")
+        root_group = zarr.open_group(str(self.path), mode="r")
+        self._image_level_count(root_group)  # validates multiscales exist
+        datasets = dict(root_group.attrs)["ome"]["multiscales"][0]["datasets"]  # type: ignore
+        if not 0 <= source_level < len(datasets):
+            raise ValueError(
+                f"source_level={source_level} does not exist: the image at "
+                f"'{self.path}' has levels 0..{len(datasets) - 1}."
+            )
+        if array.ndim != len(self.dims):
+            raise ValueError(
+                f"Label array dimensions ({array.ndim}) do not match source image "
+                f"dimensions ({len(self.dims)})"
+            )
+
+        def level_scale(level: int) -> List[float]:
+            for t in datasets[level].get("coordinateTransformations", []):
+                if t.get("type") == "scale" and "scale" in t:
+                    return [float(v) for v in t["scale"]]
+            raise ValueError(
+                f"Level {level} of the image has no scale transformation, so the "
+                "upscaling factor for source_level cannot be determined."
+            )
+
+        if source_level == 0:
+            return array
+        s0, sk = level_scale(0), level_scale(source_level)
+        factors = []
+        for axis, (a, b) in enumerate(zip(s0, sk)):
+            ratio = b / a
+            factor = round(ratio)
+            if factor < 1 or abs(ratio - factor) > 1e-6:
+                raise ValueError(
+                    f"Level {source_level} is not an integer multiple of level 0 "
+                    f"along axis '{self.dims[axis]}' (scale ratio {ratio}); cannot "
+                    "upscale by repetition."
+                )
+            factors.append(factor)
+
+        # The array must match the image's shape at source_level (size 1 is allowed
+        # on non-spatial axes, as for full-resolution labels).
+        level_shape = root_group[datasets[source_level]["path"]].shape
+        n_nonspatial = array.ndim - 2
+        for axis, (size, expected) in enumerate(zip(array.shape, level_shape)):
+            if size == expected or (size == 1 and axis < n_nonspatial):
+                continue
+            raise ValueError(
+                f"Label array shape {array.shape} does not match image level "
+                f"{source_level} shape {tuple(level_shape)}: axis "
+                f"'{self.dims[axis]}' must be {expected}"
+                + (" or 1" if axis < n_nonspatial else "")
+                + ". Pass the array computed at that level, or the correct source_level."
+            )
+
+        out = array
+        for axis, factor in enumerate(factors):
+            if factor == 1 or (array.shape[axis] == 1 and axis < n_nonspatial):
+                continue
+            out = da.repeat(out, factor, axis=axis)
+        # Level sizes are rounded when downscaling, so the repeat can be a pixel or
+        # two larger or smaller than level 0: crop the excess, edge-pad the shortfall
+        # (nearest neighbour).
+        target = self.image.shape[: out.ndim]
+        out = out[tuple(slice(0, min(n, t)) for n, t in zip(out.shape, target))]
+        pad = [
+            (0, 0) if (n == t or n == 1 and axis < n_nonspatial) else (0, t - n)
+            for axis, (n, t) in enumerate(zip(out.shape, target))
+        ]
+        if any(p[1] for p in pad):
+            out = da.pad(out, pad, mode="edge")
+        return out
+
     def add_labels(
         self,
         name: str,
@@ -641,6 +719,7 @@ class Writer:
         chunks: Optional[Union[int, tuple, str]] = None,
         shards: Optional[Union[int, tuple]] = None,
         compressors: Optional[CompressorsLike] = None,
+        source_level: Optional[int] = None,
     ) -> zarr.Group:
         """Attach a label image to an existing OME-Zarr image group.
 
@@ -672,9 +751,21 @@ class Writer:
             chunks: Chunk specification for label arrays.
             shards: Optional sharding settings.
             compressors: Optional compressor configuration.
+            source_level: Resolution level of the image that ``array`` was computed
+                on. ``None`` (default) means ``array`` is at full resolution (level 0).
+                If given, ``array`` is upscaled to level 0 with nearest-neighbour
+                repetition (lazily, for dask arrays) before the label pyramid is
+                built. The per-axis factors come from the image's scale
+                transformations, so anisotropic pyramids are handled. Non-spatial
+                axes of size 1 are left as they are.
 
         Returns:
             The newly created label group.
+
+        Raises:
+            ValueError: If ``array`` is boolean (convert it explicitly, e.g.
+                ``mask.astype("uint8")``), if ``source_level`` does not exist, or if
+                ``array`` does not match the shape of that level.
         """
         if not self.path.exists():
             raise ValueError(
@@ -690,7 +781,8 @@ class Writer:
         # int32, uint64, int64. Checked before anything is written.
         if array.dtype.kind not in "iu":
             hint = (
-                ' Convert a boolean mask with array.astype("uint8").'
+                ' Boolean masks are not accepted: convert explicitly with '
+                'array.astype("uint8") and try again.'
                 if array.dtype.kind == "b"
                 else ""
             )
@@ -704,6 +796,8 @@ class Writer:
             if isinstance(array, np.ndarray)
             else array
         )
+        if source_level is not None:
+            label_array = self._upscale_label_to_level0(label_array, source_level)
         if label_array.ndim != len(self.dims):
             raise ValueError(
                 f"Label array dimensions ({label_array.ndim}) do not match source image dimensions ({len(self.dims)})"

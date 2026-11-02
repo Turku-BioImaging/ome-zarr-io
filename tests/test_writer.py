@@ -314,6 +314,70 @@ def test_add_labels_singleton_channel_axis(temp_dir):
     assert Reader(path).validate()
 
 
+def _writer_3d(path, shape=(3, 5, 33, 33)):
+    w = Writer(
+        path=path,
+        image=np.zeros(shape, dtype=np.uint16),
+        dims=["c", "z", "y", "x"],
+        axis_units={"z": "micrometer", "y": "micrometer", "x": "micrometer"},
+        downscale_levels=2,
+        downscale_factor=2,
+    )
+    w.write()
+    return w
+
+
+def test_add_labels_source_level_upscales_to_level0(temp_dir):
+    path = temp_dir / "test.zarr"
+    w = _writer_3d(path)
+    level2 = zarr.open_group(str(path), mode="r")["2"].shape  # (3, 5, 9, 9) or similar
+    mask = np.zeros((1,) + level2[1:], dtype=np.uint8)
+    mask[0, :, 2:4, 2:4] = 7
+    w.add_labels(name="m", array=mask, source_level=2)
+
+    label = zarr.open_group(str(path), mode="r")["labels"]["m"]
+    assert label["0"].shape == (1, 5, 33, 33)
+    full = np.asarray(label["0"])
+    assert set(np.unique(full)) == {0, 7}
+    # Each source pixel becomes a 4x4 block in y/x; z (not downscaled) is unchanged.
+    assert (full[0, :, 8:16, 8:16] == 7).all()
+    assert full[0, :, :8, :].sum() == 0
+    assert full[0, :, 16:, :].sum() == 0  # padded remainder (33 vs 8*4) copies edge
+    assert Reader(path).validate()
+
+
+def test_add_labels_source_level_matches_manual_upscale(temp_dir):
+    path = temp_dir / "test.zarr"
+    w = _writer_3d(path)
+    level1 = zarr.open_group(str(path), mode="r")["1"].shape
+    mask = np.random.randint(0, 5, size=level1, dtype=np.uint8)
+    w.add_labels(name="m", array=da.from_array(mask), source_level=1)
+    got = np.asarray(zarr.open_group(str(path), mode="r")["labels"]["m"]["0"])
+    expected = mask.repeat(2, axis=2).repeat(2, axis=3)  # 16*2=32
+    expected = np.pad(expected, ((0, 0), (0, 0), (0, 1), (0, 1)), mode="edge")
+    np.testing.assert_array_equal(got, expected)
+
+
+def test_add_labels_source_level_errors(temp_dir):
+    path = temp_dir / "test.zarr"
+    w = _writer_3d(path)
+    with pytest.raises(ValueError, match="does not exist"):
+        w.add_labels(name="a", array=np.zeros((3, 5, 9, 9), np.uint8), source_level=7)
+    with pytest.raises(ValueError, match="does not match image level 1"):
+        w.add_labels(name="b", array=np.zeros((3, 5, 9, 9), np.uint8), source_level=1)
+    with pytest.raises(TypeError, match="source_level"):
+        w.add_labels(name="c", array=np.zeros((3, 5, 17, 17), np.uint8), source_level=1.0)  # type: ignore
+
+
+def test_add_labels_rejects_bool_with_source_level(temp_dir):
+    path = temp_dir / "test.zarr"
+    w = _writer_3d(path)
+    level1 = zarr.open_group(str(path), mode="r")["1"].shape
+    with pytest.raises(ValueError, match="Boolean masks are not accepted"):
+        w.add_labels(name="m", array=np.zeros(level1, dtype=bool), source_level=1)
+    assert "labels" not in zarr.open_group(str(path), mode="r")
+
+
 def test_add_labels_rejects_incompatible_shapes(temp_dir):
     path = temp_dir / "test.zarr"
     writer = Writer(
@@ -503,7 +567,7 @@ class TestLabelDtype:
 
     def test_bool_is_rejected_with_a_conversion_hint(self, writer):
         mask = np.ones((32, 32), dtype=bool)
-        with pytest.raises(ValueError, match=r'got bool\. Convert .*astype\("uint8"\)'):
+        with pytest.raises(ValueError, match=r'got bool\. Boolean masks are not accepted.*astype\("uint8"\)'):
             writer.add_labels("mask", mask)
         assert not (writer.path / "labels").exists()
         writer.add_labels("mask", mask.astype("uint8"))  # the suggested fix works

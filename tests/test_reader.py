@@ -9,7 +9,7 @@ from jsonschema.exceptions import ValidationError
 from invalid_cases import make_broken_copy
 
 from ome_zarr_io.writer import Writer
-from ome_zarr_io.reader import Reader
+from ome_zarr_io.reader import PhysicalSize, Reader
 from ome_zarr_io.schema_models import (
     Axis,
     Channel,
@@ -415,3 +415,62 @@ class TestLabelLevels:
         shutil.rmtree(written_image_path / "labels" / "nuclei" / "1")
         with pytest.raises(KeyError, match="Array '1' listed in the multiscales"):
             Reader(written_image_path).get_label("nuclei", level=1)
+
+
+class TestGetLevel:
+    def test_level_values(self, reader):
+        lvl = reader.get_level_transform(1)
+        assert lvl.level == 1
+        assert lvl.axes == ("c", "y", "x")
+        assert lvl.scale == pytest.approx((1.0, 1.0, 1.0))
+        assert lvl.translation == (0.0, 0.0, 0.0)
+        assert lvl.common_spatial_unit == "micrometer"
+        assert lvl.downsample_factor == pytest.approx((1.0, 2.0, 2.0))
+
+    def test_voxel_and_pixel_size_are_the_same_2d(self, reader):
+        lvl = reader.get_level_transform(0)
+        assert lvl.physical_voxel_size == {
+            "y": PhysicalSize(0.5, "micrometer"),
+            "x": PhysicalSize(0.5, "micrometer"),
+        }
+        assert lvl.physical_pixel_size == lvl.physical_voxel_size
+
+    def test_levels_lists_every_level(self, reader):
+        assert [lvl.level for lvl in reader.level_transforms] == list(range(reader.n_levels))
+
+    @pytest.mark.parametrize("bad", [-1, 99])
+    def test_out_of_range_raises(self, reader, bad):
+        with pytest.raises(IndexError):
+            reader.get_level_transform(bad)
+
+    @pytest.mark.parametrize("bad", ["0", 1.0, True])
+    def test_non_int_raises(self, reader, bad):
+        with pytest.raises(TypeError):
+            reader.get_level_transform(bad)
+
+    def test_multiscale_level_transform_is_composed(self, written_image_path, tmp_path):
+        composed = make_broken_copy(
+            written_image_path,
+            tmp_path / "composed.zarr",
+            lambda a: a["ome"]["multiscales"][0].__setitem__(
+                "coordinateTransformations",
+                [
+                    {"type": "scale", "scale": [1.0, 2.0, 2.0]},
+                    {"type": "translation", "translation": [0.0, 10.0, 20.0]},
+                ],
+            ),
+        )
+        lvl = Reader(composed).get_level_transform(0)
+        assert lvl.scale == pytest.approx((1.0, 1.0, 1.0))
+        assert lvl.translation == pytest.approx((0.0, 10.0, 20.0))
+        assert lvl.downsample_factor == pytest.approx((1.0, 1.0, 1.0))
+
+    def test_mixed_spatial_units(self, written_image_path, tmp_path):
+        def mix(attrs):
+            attrs["ome"]["multiscales"][0]["axes"][2]["unit"] = "nanometer"
+
+        mixed = make_broken_copy(written_image_path, tmp_path / "mixed.zarr", mix)
+        lvl = Reader(mixed).get_level_transform(0)
+        assert lvl.common_spatial_unit is None
+        size = lvl.physical_voxel_size
+        assert (size["y"].unit, size["x"].unit) == ("micrometer", "nanometer")

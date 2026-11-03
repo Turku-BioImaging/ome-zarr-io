@@ -12,7 +12,7 @@ __email__ = "junel.solis@abo.fi"
 from .writer import Writer
 from .plate import PlateWriter
 from .validator import OMEZarrValidator
-from .reader import Reader, PhysicalSize
+from .reader import Reader, PhysicalSize, LevelTransform
 from .report import FilesetReport, ValidationIssue, validate
 from .channels import random_colors
 from .schema_models import Axis
@@ -23,6 +23,7 @@ __all__ = [
     "OMEZarrValidator",
     "Reader",
     "PhysicalSize",
+    "LevelTransform",
     "validate",
     "FilesetReport",
     "ValidationIssue",

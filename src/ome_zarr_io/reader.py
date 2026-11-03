@@ -2,13 +2,19 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
 import zarr
 
-from .schema_models import Axis, Multiscale, OMEZarrImageMetadata
+from .schema_models import (
+    Axis,
+    Multiscale,
+    OMEZarrImageMetadata,
+    ScaleTransformation,
+    TranslationTransformation,
+)
 from .report import FilesetReport, validate as _validate_fileset
 from .validator import OMEZarrValidator
 
@@ -19,6 +25,85 @@ class PhysicalSize:
 
     value: float
     unit: Optional[str]
+
+
+_SPATIAL_NAMES = ("z", "y", "x")
+
+
+@dataclass(frozen=True)
+class LevelTransform:
+    """The physical coordinate transform of one multiscale pyramid level.
+
+    `scale` and `translation` are the final values: the dataset's own
+    transformations followed by the multiscale-level ones, composed in order.
+    `scale`, `translation` and `downsample_factor` are tuples aligned with `axes`.
+    """
+
+    level: int
+    path: str
+    axes: Tuple[str, ...]
+    scale: Tuple[float, ...]
+    translation: Tuple[float, ...]
+    downsample_factor: Tuple[float, ...]
+    _units: Tuple[Optional[str], ...]
+    _axis_types: Tuple[Optional[str], ...]
+
+    def _spatial_indices(self) -> List[int]:
+        return [
+            i
+            for i, (name, typ) in enumerate(zip(self.axes, self._axis_types))
+            if typ == "space" or (typ is None and name in _SPATIAL_NAMES)
+        ]
+
+    @property
+    def physical_voxel_size(self) -> Dict[str, PhysicalSize]:
+        """Size and unit of one voxel along each spatial axis.
+
+        E.g. ``{"y": PhysicalSize(0.5, "micrometer"), "x": PhysicalSize(0.5, "micrometer")}``.
+        Only spatial axes are included (never channel or time), so the result
+        has two entries for 2D data and three for 3D data.
+        """
+        return {
+            self.axes[i]: PhysicalSize(value=self.scale[i], unit=self._units[i])
+            for i in self._spatial_indices()
+        }
+
+    @property
+    def physical_pixel_size(self) -> Dict[str, PhysicalSize]:
+        """Alias of `physical_voxel_size`, convenient for 2D data."""
+        return self.physical_voxel_size
+
+    @property
+    def common_spatial_unit(self) -> Optional[str]:
+        """The unit if all spatial axes share one, else None (absent or mixed).
+
+        When this is None, read the per-axis units from `physical_voxel_size`.
+        """
+        units = {size.unit for size in self.physical_voxel_size.values()}
+        return units.pop() if len(units) == 1 else None
+
+
+def _compose(n_axes: int, transforms: list) -> Tuple[List[float], List[float]]:
+    """Fold a list of scale/translation transforms into one (scale, translation)."""
+    scale, translation = [1.0] * n_axes, [0.0] * n_axes
+    for t in transforms:
+        if isinstance(t, ScaleTransformation):
+            values = t.scale
+        elif isinstance(t, TranslationTransformation):
+            values = t.translation
+        else:
+            continue
+        if len(values) != n_axes:
+            raise ValueError(
+                f"A {t.type} transformation has {len(values)} values but the "
+                f"image has {n_axes} axes."
+            )
+        if isinstance(t, ScaleTransformation):
+            scale = [a * b for a, b in zip(scale, values)]
+            translation = [a * b for a, b in zip(translation, values)]
+        else:
+            translation = [a + b for a, b in zip(translation, values)]
+    return scale, translation
 
 
 class Reader:
@@ -218,8 +303,59 @@ class Reader:
         """Number of multiscale pyramid levels available."""
         return len(self._multiscale.datasets)
 
+    @property
+    def level_transforms(self) -> List[LevelTransform]:
+        """The coordinate transform of every pyramid level, finest first."""
+        return [self.get_level_transform(i) for i in range(self.n_levels)]
+
+    def get_level_transform(self, level: int) -> LevelTransform:
+        """Get the physical coordinate transform (metadata only) of one pyramid level.
+
+        This does not read any image data; use `get_channel(..., level=)` for that.
+
+        Args:
+            level: Integer index of the pyramid level (0 is the full resolution).
+
+        Returns:
+            A `LevelTransform` with the composed scale and translation, the axis
+            units, the voxel size and the downsampling factor relative to level 0.
+
+        Raises:
+            TypeError: If `level` is not an int.
+            IndexError: If `level` is outside ``0..n_levels-1``.
+        """
+        if isinstance(level, bool) or not isinstance(level, int):
+            raise TypeError(f"level must be an int, got {type(level).__name__}")
+        if not 0 <= level < self.n_levels:
+            raise IndexError(
+                f"level={level} does not exist: the image has levels "
+                f"0..{self.n_levels - 1}."
+            )
+        ms = self._multiscale
+        n = len(ms.axes)
+        extra = ms.coordinateTransformations or []
+
+        def composed(index: int) -> Tuple[List[float], List[float]]:
+            return _compose(n, [*ms.datasets[index].coordinateTransformations, *extra])
+
+        scale, translation = composed(level)
+        base_scale, _ = composed(0)
+        return LevelTransform(
+            level=level,
+            path=ms.datasets[level].path,
+            axes=tuple(a.name for a in ms.axes),
+            scale=tuple(scale),
+            translation=tuple(translation),
+            downsample_factor=tuple(a / b for a, b in zip(scale, base_scale)),
+            _units=tuple(a.unit for a in ms.axes),
+            _axis_types=tuple(a.type for a in ms.axes),
+        )
+
     def get_physical_size(self, level: int = 0) -> Dict[str, PhysicalSize]:
         """Get the physical pixel/voxel size for each spatial and time axis.
+
+        See `get_level_transform` for a richer result that also has translation and the
+        downsampling factor.
 
         Args:
             level: Multiscale pyramid level to compute sizes for.
@@ -231,12 +367,7 @@ class Reader:
         Raises:
             IndexError: If `level` is out of range.
         """
-        dataset = self._multiscale.datasets[level]
-        scale = next(
-            t.scale
-            for t in dataset.coordinateTransformations
-            if hasattr(t, "scale")
-        )
+        scale = self.get_level_transform(level).scale
 
         return {
             axis.name: PhysicalSize(value=scale[i], unit=axis.unit)

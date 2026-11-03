@@ -47,4 +47,15 @@ segmentation = reader.get_label("cell_space_segmentation", as_type="numpy")
 # Query physical pixel/voxel size
 print(reader.get_physical_size())  # {"z": PhysicalSize(0.325, "micrometer"), ...}
 print(reader.get_voxel_size())     # {"z": 0.325, "y": 0.15, "x": 0.15}
+
+# Full physical transform of one pyramid level (an int index)
+lvl = reader.get_level_transform(1)  # metadata only, no image data is read
+print(lvl.physical_voxel_size)     # spatial axes only: {"y": PhysicalSize(0.3, "micrometer"), ...}
+print(lvl.physical_pixel_size)     # same thing, handy for 2D data
+print(lvl.common_spatial_unit)     # "micrometer" (None if absent or mixed)
+print(lvl.scale, lvl.translation)  # tuples aligned with lvl.axes
+print(lvl.downsample_factor)       # scale relative to level 0, per axis
 ```
+
+`reader.level_transforms` returns these objects for every level. `scale` and `translation`
+already include any multiscale-level `coordinateTransformations`.

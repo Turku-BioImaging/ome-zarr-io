@@ -236,12 +236,16 @@ class Reader:
         channel_index = self._channel_index(name)
 
         c_axis = self.dims.index("c")
-        array = self._base_level_array(level)
-        index: List[Union[slice, int]] = [slice(None)] * array.ndim
+        dataset_paths = [dataset.path for dataset in self._multiscale.datasets]
+        zarr_array = self._open_zarr_level(self._root, dataset_paths, level)
+        index: List[Union[slice, int]] = [slice(None)] * zarr_array.ndim
         index[c_axis] = channel_index
-        channel_array = array[tuple(index)]
 
-        return channel_array.compute() if as_type == "numpy" else channel_array
+        if as_type == "numpy":
+            # Read straight from zarr: far cheaper than a dask graph with one
+            # task per stored chunk.
+            return np.asarray(zarr_array[tuple(index)])
+        return self._to_dask(zarr_array)[tuple(index)]
 
     # -- Labels -----------------------------------------------------------
 
@@ -282,9 +286,11 @@ class Reader:
         # Label groups carry their own multiscales metadata; read the dataset
         # paths from it rather than assuming they match the base image.
         dataset_paths = self._label_dataset_paths(name, label_group)  # type: ignore[arg-type]
-        array = self._open_level_array(label_group, dataset_paths, level)  # type: ignore[arg-type]
+        zarr_array = self._open_zarr_level(label_group, dataset_paths, level)  # type: ignore[arg-type]
 
-        return array.compute() if as_type == "numpy" else array
+        if as_type == "numpy":
+            return np.asarray(zarr_array[...])
+        return self._to_dask(zarr_array)
 
     # -- Metadata accessors -------------------------------------------------
 
@@ -418,7 +424,29 @@ class Reader:
     def _open_level_array(
         self, group: zarr.Group, dataset_paths: List[str], level: int
     ) -> da.Array:
-        """Open a resolution level as a lazy dask array.
+        """Open a resolution level as a lazy dask array (see `_open_zarr_level`)."""
+        return self._to_dask(self._open_zarr_level(group, dataset_paths, level))
+
+    @staticmethod
+    def _to_dask(zarr_array: zarr.Array) -> da.Array:
+        """Wrap a zarr array in dask using blocks that are multiples of its storage unit.
+
+        The unit is the shard shape if the array is sharded, else the chunk shape.
+        Using the stored chunks one-to-one makes one task per chunk, which is
+        very slow for arrays with many small chunks; blocks of whole units keep
+        reads aligned while cutting the task count.
+        """
+        unit = zarr_array.shards or zarr_array.chunks
+        chunks = da.core.normalize_chunks(
+            "auto", zarr_array.shape, dtype=zarr_array.dtype, previous_chunks=unit
+        )
+        return da.from_array(zarr_array, chunks=chunks, name=False)  # type: ignore[arg-type]
+
+    @staticmethod
+    def _open_zarr_level(
+        group: zarr.Group, dataset_paths: List[str], level: int
+    ) -> zarr.Array:
+        """Open a resolution level as a zarr array.
 
         Args:
             group: Multiscale group containing the level arrays.
@@ -443,4 +471,4 @@ class Reader:
                 f"Array '{path}' listed in the multiscales metadata for level "
                 f"{level} does not exist"
             ) from None
-        return da.from_array(zarr_array, chunks=zarr_array.chunks)  # type: ignore[union-attr]
+        return zarr_array  # type: ignore[return-value]

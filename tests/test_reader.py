@@ -474,3 +474,31 @@ class TestGetLevel:
         assert lvl.common_spatial_unit is None
         size = lvl.physical_voxel_size
         assert (size["y"].unit, size["x"].unit) == ("micrometer", "nanometer")
+
+
+def test_to_dask_uses_whole_chunk_blocks_and_matches_zarr():
+    """Dask blocks are whole multiples of stored chunks, so far fewer tasks."""
+    import zarr
+
+    data = np.arange(1 * 512 * 512, dtype=np.uint16).reshape(1, 512, 512)
+    z = zarr.create_array(store={}, shape=data.shape, chunks=(1, 16, 16), dtype=data.dtype)
+    z[...] = data
+    arr = Reader._to_dask(z)
+    assert arr.numblocks[1] * arr.numblocks[2] < (512 // 16) ** 2
+    for axis_chunks, unit in zip(arr.chunks, (1, 16, 16)):
+        assert all(c % unit == 0 for c in axis_chunks[:-1])
+    np.testing.assert_array_equal(arr.compute(), data)
+
+
+def test_to_dask_sharded_blocks_align_to_shards():
+    import zarr
+
+    data = np.arange(256 * 256, dtype=np.uint8).reshape(256, 256)
+    z = zarr.create_array(
+        store={}, shape=data.shape, chunks=(16, 16), shards=(64, 64), dtype=data.dtype
+    )
+    z[...] = data
+    arr = Reader._to_dask(z)
+    for axis_chunks in arr.chunks:
+        assert all(c % 64 == 0 for c in axis_chunks[:-1])
+    np.testing.assert_array_equal(arr.compute(), data)

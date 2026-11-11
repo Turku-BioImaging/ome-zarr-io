@@ -3,6 +3,7 @@
 Read, write, and validate OME-Zarr 0.5 images and high-content-screening plates: from a NumPy array to a spec-compliant OME-Zarr image in a few lines of Python.
 
 [![CI/CD](https://github.com/Turku-BioImaging/ome-zarr-io/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Turku-BioImaging/ome-zarr-io/actions/workflows/ci-cd.yml)
+[![codecov](https://codecov.io/gh/Turku-BioImaging/ome-zarr-io/graph/badge.svg)](https://codecov.io/gh/Turku-BioImaging/ome-zarr-io)
 [![Documentation](https://img.shields.io/badge/docs-online-00aeef)](https://turku-bioimaging.github.io/ome-zarr-io/)
 [![Python 3.11 | 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
 [![PyPI](https://img.shields.io/pypi/v/ome-zarr-io)](https://pypi.org/project/ome-zarr-io/)

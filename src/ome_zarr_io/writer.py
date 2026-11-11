@@ -18,6 +18,7 @@ from .channels import (
     normalize_color,
     omero_needs_stats,
     parse_channels,
+    random_colors,
     resolve_channels,
 )
 from .downscaler import Downscaler
@@ -155,8 +156,8 @@ class Writer:
     def from_existing(cls, path: Union[str, Path], **unexpected: Any) -> "Writer":
         """Attach a Writer to an OME-Zarr image that is already on disk.
 
-        The returned Writer is only for adding to the image, e.g. with
-        :meth:`add_labels`; :meth:`write` is disabled so the image cannot be
+        The returned Writer is only for adding to the image, with
+        :meth:`add_labels` or :meth:`add_channels`; :meth:`write` is disabled so the image cannot be
         overwritten. Everything ``add_labels`` needs is read from the image's
         metadata: its axes, shape, pixel sizes, number of levels and downscale
         factor. No pixel data is read.
@@ -951,6 +952,204 @@ class Writer:
 
         return label_group
 
+    def add_channels(
+        self,
+        array: Union[da.Array, np.ndarray],
+        channels: Any,
+        downscale_method: Literal["mean", "nearest"] = "mean",
+    ) -> None:
+        """Append channels to the image on disk, e.g. a background-subtracted copy.
+
+        ``array`` is the new channels at full resolution (level 0). Its pyramid is
+        built with the image's own downscale factor and number of levels, then the
+        ``c`` axis of every level is extended and ``omero.channels`` gets one entry
+        per new channel. The existing channels are not rewritten.
+
+        Args:
+            array: NumPy or dask array with the image's dimensions. Every axis but
+                ``c`` must match the image, and the dtype must equal the image's
+                (all channels of a zarr array share one dtype). Its ``c`` size is
+                the number of new channels.
+            channels: One entry per new channel, in any form ``Writer(channels=...)``
+                accepts except an ``Omero`` object: a list of labels, a list of dicts
+                or a dict keyed by label. Per channel: ``label``, ``color``,
+                ``window``, ``family`` and ``active``; ``active=False`` hides the
+                channel by default in viewers. Labels must differ from those already
+                in the image. A missing color gets an automatic one that avoids the
+                image's existing colors.
+            downscale_method: "mean" (default) for intensity data.
+
+        Raises:
+            RuntimeError: If the Writer was not made with :meth:`from_existing`.
+            TypeError: If ``array`` is not a NumPy or dask array.
+            ValueError: If the image has no ``c`` axis or no ``omero`` channels
+                matching its ``c`` axis, if ``array`` does not match the image's
+                shape or dtype, if ``channels`` does not have one entry per new
+                channel, or if a label already exists.
+
+        If writing fails part way, the ``c`` axes are shrunk back and the image is
+        left as it was.
+        """
+        if not self._from_existing:
+            raise RuntimeError(
+                "add_channels() needs an existing image: use "
+                "Writer.from_existing(path).add_channels(...)."
+            )
+        if not isinstance(array, (np.ndarray, da.Array)):
+            raise TypeError(
+                f"array must be a numpy array or dask array, got {type(array)}"
+            )
+        if "c" not in self.dims:
+            raise ValueError(
+                f"The image at '{self.path}' has no 'c' axis (dims {self.dims}), so "
+                "channels cannot be added to it."
+            )
+        c_axis = self.dims.index("c")
+        if array.ndim != len(self.dims):
+            raise ValueError(
+                f"array has {array.ndim} dimensions but the image has "
+                f"{len(self.dims)} ({self.dims})"
+            )
+        for axis, (size, image_size) in enumerate(zip(array.shape, self.image.shape)):
+            if axis != c_axis and size != image_size:
+                raise ValueError(
+                    f"array shape {array.shape} does not match the image shape "
+                    f"{self.image.shape} (dims {self.dims}): axis '{self.dims[axis]}' "
+                    f"must be {image_size}; only 'c' may differ"
+                )
+        if array.shape[c_axis] < 1:
+            raise ValueError("array has no channels")
+        if array.dtype != self.image.dtype:
+            raise ValueError(
+                f"array has dtype {array.dtype} but the image has {self.image.dtype}; "
+                "all channels of an image share one dtype. Convert explicitly with "
+                "array.astype(...) if that is what you want."
+            )
+        n_new = array.shape[c_axis]
+
+        root_group = zarr.open_group(str(self.path), mode="a")
+        ome = dict(root_group.attrs.get("ome", {}))  # type: ignore
+        omero = ome.get("omero")
+        existing = omero.get("channels") if isinstance(omero, dict) else None
+        n_old = self.image.shape[c_axis]
+        if not isinstance(existing, list) or len(existing) != n_old:
+            raise ValueError(
+                f"The image at '{self.path}' has {n_old} channels on its 'c' axis but "
+                f"{'no' if existing is None else len(existing)} entries in "
+                "omero.channels, so new channels cannot be indexed consistently. "
+                "Give the existing channels omero metadata first."
+            )
+
+        parsed = parse_channels(channels)
+        if isinstance(parsed, Omero):
+            raise ValueError("pass channels as labels or dicts, not an Omero object")
+        if len(parsed) != n_new:
+            raise ValueError(
+                f"{len(parsed)} channels given but array has {n_new} on its 'c' axis"
+            )
+        old_labels = {c.get("label") for c in existing if isinstance(c, dict)}
+        clashes = sorted(
+            str(s.label) for s in parsed if s.label is not None and s.label in old_labels
+        )
+        if clashes:
+            raise ValueError(f"channel labels already in the image: {clashes}")
+        old_colors = [
+            normalize_color(c["color"])
+            for c in existing
+            if isinstance(c, dict) and c.get("color")
+        ]
+        pool = random_colors(
+            n_new,
+            self.color_seed,
+            avoid=old_colors
+            + [s.color for s in parsed if s.color and not s.auto_color],
+        )
+        for i, spec in enumerate(parsed):
+            if spec.auto_color or not spec.color:
+                spec.color, spec.auto_color = pool[i], False
+
+        # Locate and check every level before touching anything.
+        image_levels = self._image_level_count(root_group)
+        datasets = ome["multiscales"][0]["datasets"]
+        targets = []
+        for level, dataset in enumerate(datasets):
+            target = root_group[dataset["path"]]
+            if not isinstance(target, zarr.Array) or target.shape[c_axis] != n_old:
+                raise ValueError(
+                    f"Level {level} of '{self.path}' does not have {n_old} entries "
+                    "on its 'c' axis; the image is inconsistent."
+                )
+            if target.dtype != array.dtype:
+                raise ValueError(
+                    f"Level {level} has dtype {target.dtype}, not {array.dtype}."
+                )
+            targets.append(target)
+
+        new = da.from_array(array, chunks="auto") if isinstance(array, np.ndarray) else array
+        scaler = Downscaler(
+            downscale_factor=self.downscale_factor,
+            downscale_method=downscale_method,
+            downscale_levels=image_levels - 1,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # reported as an error below
+            possible = scaler.validate_downscale_levels(new.shape)
+        if possible != image_levels - 1:
+            raise ValueError(
+                f"The image has {image_levels} levels but the new channels can only "
+                f"have {possible + 1}."
+            )
+        levels = scaler.create_downscaled_arrays(new)
+
+        old_shapes = [t.shape for t in targets]
+        window_values: Optional[np.ndarray] = None
+        try:
+            for level, (target, data) in enumerate(zip(targets, levels)):
+                if tuple(data.shape) != tuple(
+                    n_new if a == c_axis else d
+                    for a, d in enumerate(target.shape)
+                ):
+                    raise ValueError(
+                        f"New channels at level {level} have shape {data.shape}, "
+                        f"which does not fit the image level of shape {target.shape}."
+                    )
+                values = np.asarray(data)
+                if level == 0:
+                    window_values = values
+                new_shape = list(target.shape)
+                new_shape[c_axis] = n_old + n_new
+                target.resize(tuple(new_shape))
+                index = [slice(None)] * target.ndim
+                index[c_axis] = slice(n_old, n_old + n_new)
+                target[tuple(index)] = values
+            resolved = resolve_channels(parsed, window_values, c_axis, self.color_seed)
+        except BaseException:
+            for target, shape in zip(targets, old_shapes):
+                target.resize(shape)
+            raise
+
+        # Metadata last, so an interruption never leaves omero describing missing data.
+        ome["omero"] = {
+            **omero,
+            "channels": existing + [self._channel_dict(c) for c in resolved.channels],
+        }
+        root_group.attrs["ome"] = ome  # type: ignore
+        # Keep this Writer in step with the image on disk.
+        self.image = Reader(self.path)._base_level_array(0)
+
+    @staticmethod
+    def _channel_dict(channel: Any) -> Dict[str, Any]:
+        """An omero channel as it is stored in zarr.json (None fields left out)."""
+        out: Dict[str, Any] = {}
+        if channel.window is not None:
+            w = channel.window
+            out["window"] = {"start": w.start, "min": w.min, "end": w.end, "max": w.max}
+        for key in ("label", "family", "color", "active"):
+            value = getattr(channel, key)
+            if value is not None:
+                out[key] = value
+        return out
+
     def write(
         self,
         chunks: Optional[Union[int, tuple, str]] = None,
@@ -980,7 +1179,7 @@ class Writer:
             raise RuntimeError(
                 f"This Writer was attached to the existing image at '{self.path}' "
                 "with Writer.from_existing, so write() is disabled to protect the "
-                "image. Use add_labels() to add to it."
+                "image. Use add_labels() or add_channels() to add to it."
             )
 
         # Remove existing file if overwrite is True

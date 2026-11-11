@@ -15,6 +15,7 @@ from .schema_models import (
     ScaleTransformation,
     TranslationTransformation,
 )
+from .resample import resample_array
 from .report import FilesetReport, validate as _validate_fileset
 from .validator import OMEZarrValidator
 
@@ -246,6 +247,113 @@ class Reader:
             # task per stored chunk.
             return np.asarray(zarr_array[tuple(index)])
         return self._to_dask(zarr_array)[tuple(index)]
+
+    def resample(
+        self,
+        array: Union[da.Array, np.ndarray],
+        from_level: int,
+        to_level: int,
+        *,
+        kind: Literal["image", "label"] = "image",
+        method: Optional[Literal["nearest", "mean", "linear"]] = None,
+        as_type: Optional[Literal["dask", "numpy"]] = None,
+    ) -> Union[da.Array, np.ndarray]:
+        """Resample an array from the grid of one pyramid level to another's.
+
+        Typical use is to read data at one level, process it, and bring the
+        result onto the grid of another level::
+
+            out = reader.resample(my_filter(reader.get_channel("DAPI", 2)), 2, 0)
+            lbl = reader.resample(reader.get_label("nuclei", 0), 0, 3, kind="label")
+
+        Resampling factors come from the ratio of the levels' scale transforms, and
+        the output has exactly the stored shape of `to_level` along spatial axes
+        (excess is cropped, a shortfall is edge-padded). Axes other than z/y/x
+        keep their size, and leading axes may be missing (e.g. the 'c' axis that
+        `get_channel` removes). Levels refer to the image's pyramid.
+
+        Args:
+            array: NumPy or Dask array shaped like `from_level`.
+            from_level: Pyramid level the array is on (negative counts from the end).
+            to_level: Pyramid level to resample to.
+            kind: "label" always uses nearest neighbour so label ids are never
+                invented; "image" is for intensity data.
+            method: "nearest", "mean" (downscaling only) or "linear" (upscaling
+                only). Default: "nearest" for labels; "mean" down and "linear" up
+                for images.
+            as_type: "dask" or "numpy". Default: the type of `array`.
+
+        Raises:
+            TypeError: If a level is not an int.
+            IndexError: If a level is out of range.
+            ValueError: If `array` does not match the shape of `from_level`, the
+                levels are not related by an integer factor, or `method` does not
+                fit `kind` or the direction of resampling.
+        """
+        if kind not in ("image", "label"):
+            raise ValueError(f"kind must be 'image' or 'label', got {kind!r}")
+        if method not in (None, "nearest", "mean", "linear"):
+            raise ValueError(f"Unknown method {method!r}")
+        if kind == "label" and method not in (None, "nearest"):
+            raise ValueError(
+                f"method={method!r} would invent label values; labels can only use 'nearest'"
+            )
+        levels = []
+        for level in (from_level, to_level):
+            if isinstance(level, bool) or not isinstance(level, int):
+                raise TypeError(f"level must be an int, got {type(level).__name__}")
+            if not -self.n_levels <= level < self.n_levels:
+                raise IndexError(
+                    f"level={level} does not exist: the image has levels "
+                    f"0..{self.n_levels - 1}."
+                )
+            levels.append(level % self.n_levels)
+        src, dst = levels
+
+        ndim = len(self.dims)
+        if not 2 <= array.ndim <= ndim:
+            raise ValueError(
+                f"Array has {array.ndim} dimensions; expected between 2 and {ndim} "
+                f"(image axes: {self.dims})"
+            )
+        offset = ndim - array.ndim  # leading axes dropped from the array
+        names = self.dims[offset:]
+        t_from, t_to = self.get_level_transform(src), self.get_level_transform(dst)
+        paths = [d.path for d in self._multiscale.datasets]
+        shape_from = self._open_zarr_level(self._root, paths, src).shape[offset:]
+        shape_to = self._open_zarr_level(self._root, paths, dst).shape[offset:]
+
+        factors: List[float] = []
+        target: List[Optional[int]] = []
+        for i, name in enumerate(names):
+            factors.append(t_to.scale[offset + i] / t_from.scale[offset + i])
+            if name in _SPATIAL_NAMES:
+                if array.shape[i] != shape_from[i]:
+                    raise ValueError(
+                        f"Array shape {tuple(array.shape)} does not match level "
+                        f"{src}: axis '{name}' should be {shape_from[i]}, got "
+                        f"{array.shape[i]}. Is from_level correct?"
+                    )
+                target.append(shape_to[i])
+            else:
+                target.append(None)
+
+        if method == "mean" and any(f < 1 for f in factors) or (
+            method == "linear" and any(f > 1 for f in factors)
+        ):
+            raise ValueError(
+                f"method={method!r} does not apply to this direction: 'mean' is for "
+                "downscaling and 'linear' for upscaling"
+            )
+        if method is None:
+            up = any(f < 1 for f in factors)
+            method = "nearest" if kind == "label" else ("linear" if up else "mean")
+
+        was_numpy = isinstance(array, np.ndarray)
+        darr = da.from_array(array) if was_numpy else array
+        out = resample_array(darr, factors, target, method)
+        want = as_type or ("numpy" if was_numpy else "dask")
+        return np.asarray(out.compute()) if want == "numpy" else out
 
     # -- Labels -----------------------------------------------------------
 

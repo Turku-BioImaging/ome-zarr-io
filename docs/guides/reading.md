@@ -59,3 +59,24 @@ print(lvl.downsample_factor)       # scale relative to level 0, per axis
 
 `reader.level_transforms` returns these objects for every level. `scale` and `translation`
 already include any multiscale-level `coordinateTransformations`.
+
+## Resampling between pyramid levels
+
+Read data at one level, process it, and bring the result onto the grid of another
+level with `Reader.resample`:
+
+```python
+# Process a coarse level (cheap), then upscale the result to full resolution
+from scipy.ndimage import gaussian_filter
+
+smooth = gaussian_filter(reader.get_channel("DAPI", level=2, as_type="numpy"), sigma=2)
+smooth_full = reader.resample(smooth, from_level=2, to_level=0)
+
+# Labels always use nearest neighbour, so no new label ids are created
+labels_coarse = reader.resample(reader.get_label("cell_space_segmentation"), 0, 2, kind="label")
+```
+
+The factors come from the levels' scale transforms and the output has exactly the
+stored shape of `to_level`. Images are downscaled by block mean and upscaled
+linearly by default; pass `method="nearest"` to change that. Dask input stays lazy,
+and `as_type` selects a Dask or NumPy result. Levels refer to the image's pyramid.
